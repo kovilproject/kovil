@@ -25,7 +25,7 @@ DB_NAME = "kovil_kanakku.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # Receipts table
+    # Receipts (Varavu) table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS receipts (
             receipt_no INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,6 +34,17 @@ def init_db():
             name TEXT,
             city TEXT,
             amount REAL
+        )
+    ''')
+    # Expenses (Selavu) table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS expenses (
+            expense_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            category TEXT,
+            title TEXT,
+            amount REAL,
+            remarks TEXT
         )
     ''')
     # Users table for Login
@@ -79,7 +90,7 @@ def update_password(username, new_password):
 
 
 if not st.session_state['logged_in']:
-    st.markdown("<h1 style='text-align: center;'>🛕 ஸ்ரீ மகா மாரியம்மன் கோவில்</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை</h1>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align: center;'>கணக்கு மேலாண்மை - உள்நுழைவு (Login)</h3>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -127,7 +138,8 @@ def to_tamil(text):
     special_dict = {
         "muthu": "முத்து", "ramesh": "ரமேஷ்", "suresh": "சுரேஷ்", "kumar": "குமார்",
         "raja": "ராஜா", "karthik": "கார்த்திக்", "murugan": "முருகன்", "selvam": "செல்வம்",
-        "madurai": "மதுரை", "melur": "மேலூர்", "chennai": "சென்னை", "kovil": "கோவில்"
+        "madurai": "மதுரை", "melur": "மேலூர்", "chennai": "சென்னை", "kovil": "கோவில்",
+        "poojai": "பூஜை", "current bill": "மின்சாரக் கட்டணம்", "pal": "பால்", "flower": "பூக்கள்"
     }
 
     clean_text = text.strip().lower()
@@ -175,7 +187,7 @@ def generate_receipt_pdf(title, name, city, amount, receipt_no):
     c.rect(20, 20, width - 40, height - 40)
 
     c.setFont(font_name, 20)
-    c.drawCentredString(width / 2, height - 80, "ஸ்ரீ மகா மாரியம்மன் கோவில்")
+    c.drawCentredString(width / 2, height - 80, "அருள்மிகு பெத்தையா காடேரி அம்பிகை ")
     c.setFont(font_name, 12)
     c.drawCentredString(width / 2, height - 105, "நற்பணி மன்றம் மற்றும் தளபதி தளபதிகள்")
     c.drawCentredString(width / 2, height - 125, "மேலூர் மேல வீதி, மதுரை - 625020.")
@@ -201,26 +213,27 @@ def generate_receipt_pdf(title, name, city, amount, receipt_no):
     return buffer.getvalue()
 
 
-def generate_full_report_pdf(df):
+def generate_full_report_pdf(df, title_text):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=landscape(A4))
     width, height = landscape(A4)
     font_name = get_pdf_font()
 
     c.setFont(font_name, 16)
-    c.drawCentredString(width / 2, height - 40, "ஸ்ரீ மகா மாரியம்மன் கோவில் - கணக்கு அறிக்கை (Report)")
+    c.drawCentredString(width / 2, height - 40, f"அருள்மிகு பெத்தையா காடேரி அம்பிகை - {title_text}")
     c.setFont(font_name, 10)
     c.drawCentredString(width / 2, height - 55, f"உருவாக்கப்பட்ட தேதி: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}")
     c.line(30, height - 65, width - 30, height - 65)
 
     y = height - 90
-    c.setFont(font_name, 11)
-    c.drawString(40, y, "ரசீது எண்")
-    c.drawString(120, y, "தேதி")
-    c.drawString(220, y, "வகை")
-    c.drawString(340, y, "பெயர்")
-    c.drawString(550, y, "ஊர்")
-    c.drawString(720, y, "தொகை (Rs.)")
+    c.setFont(font_name, 10)
+
+    # Table headers based on columns
+    cols = df.columns.tolist()
+    x_positions = [40, 120, 220, 360, 560, 720]
+
+    for idx, col in enumerate(cols[:6]):
+        c.drawString(x_positions[idx], y, str(col))
 
     c.line(30, y - 5, width - 30, y - 5)
     y -= 25
@@ -233,20 +246,19 @@ def generate_full_report_pdf(df):
             y = height - 50
             c.setFont(font_name, 10)
 
-        c.drawString(40, y, str(row['ரசீது எண்']))
-        c.drawString(120, y, str(row['தேதி']))
-        c.drawString(220, y, str(row['வகை']))
-        c.drawString(340, y, str(row['பெயர்']))
-        c.drawString(550, y, str(row['ஊர்']))
-        c.drawString(720, y, f"{row['தொகை (₹)']:,.2f}")
+        for idx, col in enumerate(cols[:6]):
+            val = str(row[col]) if pd.notnull(row[col]) else ""
+            c.drawString(x_positions[idx], y, val)
 
-        total_amt += row['தொகை (₹)']
+        if "தொகை (₹)" in df.columns:
+            total_amt += row["தொகை (₹)"]
         y -= 20
 
     c.line(30, y + 10, width - 30, y + 10)
-    c.setFont(font_name, 11)
-    c.drawString(550, y - 10, "மொத்த வசூல்:")
-    c.drawString(720, y - 10, f"Rs. {total_amt:,.2f}")
+    if "தொகை (₹)" in df.columns:
+        c.setFont(font_name, 11)
+        c.drawString(550, y - 10, "மொத்தம்:")
+        c.drawString(720, y - 10, f"Rs. {total_amt:,.2f}")
 
     c.showPage()
     c.save()
@@ -257,33 +269,37 @@ def generate_full_report_pdf(df):
 # ---------------------------------------------------------
 # 8. STREAMLIT MAIN APP UI
 # ---------------------------------------------------------
-st.title("🛕 ஸ்ரீ மகா மாரியம்மன் கோவில் - ரசீது பதிவேடு")
+st.title("🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை - வரவு செலவு கணக்கு")
 
-tab1, tab2, tab3 = st.tabs(
-    ["📝 புதிய ரசீது (Entry)", "📊 கணக்கு அறிக்கைகள் (Reports)", "🗑️ என்ட்ரி நீக்குதல் (Delete Entry)"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📥 புதிய வரவு (Receipt)",
+    "📤 புதிய செலவு (Expense)",
+    "📊 வரவு-செலவு அறிக்கைகள் (Reports)",
+    "🗑️ பதிவு நீக்குதல் (Delete)"
+])
 
-# --- TAB 1: ENTRY ---
+# --- TAB 1: RECEIPT (VARAVU) ---
 with tab1:
-    st.subheader("புதிய ரசீது பதிவு")
+    st.subheader("📝 புதிய வரவு பதிவு")
     col1, col2 = st.columns(2)
 
     with col1:
-        category = st.selectbox("வகை", ["வைப்பு நிதி", "காணிக்கை"])
-        name_eng = st.text_input("பக்தர் பெயர் (English / Tanglish-ல் டைப் செய்யவும்):",
-                                 placeholder="எ.கா: muthu / ramesh / karthik")
+        category = st.selectbox("வரவு வகை", ["வைப்பு நிதி", "காணிக்கை", "சிறப்பு நன்கொடை", "இதர வரவு"])
+        name_eng = st.text_input("பக்தர் பெயர் (English / Tanglish):", placeholder="எ.கா: muthu / ramesh",
+                                 key="v_name_eng")
         name_tam_auto = to_tamil(name_eng) if name_eng else ""
-        name_final = st.text_input("தமிழ் பெயர் (தேவைப்பட்டால் மாற்றிக் கொள்ளலாம்):", value=name_tam_auto)
+        name_final = st.text_input("தமிழ் பெயர்:", value=name_tam_auto, key="v_name_tam")
 
     with col2:
-        city_eng = st.text_input("ஊர் / பகுதி (English / Tanglish-ல் டைப் செய்யவும்):",
-                                 placeholder="எ.கா: madurai / melur")
+        city_eng = st.text_input("ஊர் / பகுதி (English / Tanglish):", placeholder="எ.கா: madurai / melur",
+                                 key="v_city_eng")
         city_tam_auto = to_tamil(city_eng) if city_eng else ""
-        city_final = st.text_input("தமிழ் ஊர் (தேவைப்பட்டால் மாற்றிக் கொள்ளலாம்):", value=city_tam_auto)
-        amount = st.number_input("தொகை (₹)", min_value=1.0, step=10.0)
+        city_final = st.text_input("தமிழ் ஊர்:", value=city_tam_auto, key="v_city_tam")
+        amount = st.number_input("தொகை (₹)", min_value=1.0, step=10.0, key="v_amount")
 
     st.markdown("---")
 
-    if st.button("💾 சேமி & PDF உருவாக்க"):
+    if st.button("💾 வரவைச் சேமி & PDF உருவாக்கு", key="btn_save_varavu"):
         if not name_final or amount <= 0:
             st.warning("⚠️ தயவுசெய்து பெயர் மற்றும் தொகையை நிரப்பவும்!")
         else:
@@ -299,7 +315,7 @@ with tab1:
                 receipt_no = cursor.lastrowid
                 conn.close()
 
-                st.success(f"✅ வெற்றிகரமாக சேமிக்கப்பட்டது! ரசீது எண்: {receipt_no}")
+                st.success(f"✅ வரவு சேமிக்கப்பட்டது! ரசீது எண்: {receipt_no}")
                 pdf_bytes = generate_receipt_pdf(category, name_final, city_final, amount, receipt_no)
                 st.download_button(
                     label="📄 தனி நபர் PDF ரசீது டவுன்லோட் செய்",
@@ -310,115 +326,166 @@ with tab1:
             except Exception as e:
                 st.error(f"❌ சேமிப்பதில் எர்ரர்: {e}")
 
-# --- TAB 2: REPORTS ---
+# --- TAB 2: EXPENSE (SELAVU) ---
 with tab2:
-    st.subheader("📊 முன்னேறிய கணக்கு அறிக்கைகள் (Advanced Reports)")
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        df = pd.read_sql_query(
-            "SELECT receipt_no as 'ரசீது எண்', date as 'தேதி', category as 'வகை', name as 'பெயர்', city as 'ஊர்', amount as 'தொகை (₹)' FROM receipts ORDER BY receipt_no DESC",
-            conn)
-        conn.close()
+    st.subheader("💸 புதிய செலவு பதிவு")
+    col_e1, col_e2 = st.columns(2)
 
-        if not df.empty:
-            st.markdown("#### 🔍 ஃபில்டர் வசதிகள்")
-            col_f1, col_f2, col_f3 = st.columns(3)
+    with col_e1:
+        exp_category = st.selectbox("செலவு வகை", [
+            "மின்சாரக் கட்டணம் (EB Bill)",
+            "பூஜைப் பொருட்கள்",
+            "அன்னதானம்",
+            "வேலை ஆள் கூலி",
+            "பராமரிப்புச் செலவு",
+            "திருவிழாச் செலவு",
+            "இதர செலவுகள்"
+        ])
+        title_eng = st.text_input("செலவு விவரம் (English / Tanglish):", placeholder="எ.கா: EB Bill / Poojai Porutkal",
+                                  key="e_title_eng")
+        title_tam_auto = to_tamil(title_eng) if title_eng else ""
+        title_final = st.text_input("தமிழ் விவரம்:", value=title_tam_auto, key="e_title_tam")
 
-            with col_f1:
-                search_term = st.text_input("🔎 பெயர் அல்லது ஊரை வைத்து தேட:", placeholder="எ.கா: முத்து / மதுரை")
-            with col_f2:
-                cat_filter = st.selectbox("வகை வாரியாக பிரிக்க:", ["அனைத்தும் (All)", "காணிக்கை", "வைப்பு நிதி"])
-            with col_f3:
-                date_filter = st.date_input("தேதி வாரியாக பார்க்க (Range):", [])
+    with col_e2:
+        exp_amount = st.number_input("செலவுத் தொகை (₹)", min_value=1.0, step=10.0, key="e_amount")
+        remarks = st.text_area("கூடுதல் குறிப்பு (Optional):", placeholder="எ.கா: பில் எண் / யாருக்கு கொடுக்கப்பட்டது",
+                               key="e_remarks")
 
-            filtered_df = df.copy()
-            if search_term:
-                filtered_df = filtered_df[
-                    filtered_df['பெயர்'].astype(str).str.contains(search_term, case=False, na=False) |
-                    filtered_df['ஊர்'].astype(str).str.contains(search_term, case=False, na=False)
-                    ]
-            if cat_filter != "அனைத்தும் (All)":
-                filtered_df = filtered_df[filtered_df['வகை'] == cat_filter]
-            if len(date_filter) == 2:
-                start_date, end_date = date_filter
-                filtered_df['temp_date'] = pd.to_datetime(filtered_df['தேதி'], format='%d-%m-%Y')
-                filtered_df = filtered_df[
-                    (filtered_df['temp_date'] >= pd.to_datetime(start_date)) &
-                    (filtered_df['temp_date'] <= pd.to_datetime(end_date))
-                    ].drop(columns=['temp_date'])
+    st.markdown("---")
 
-            st.markdown("---")
-            st.markdown("#### 💰 கணக்கு சுருக்கம் (Summary)")
-            m1, m2, m3, m4 = st.columns(4)
-
-            total_collection = filtered_df["தொகை (₹)"].sum()
-            kanikkai_tot = filtered_df[filtered_df['வகை'] == 'காணிக்கை']["தொகை (₹)"].sum()
-            vaipu_tot = filtered_df[filtered_df['வகை'] == 'வைப்பு நிதி']["தொகை (₹)"].sum()
-            total_entries = len(filtered_df)
-
-            m1.metric("மொத்த வசூல்", f"₹ {total_collection:,.2f}")
-            m2.metric("காணிக்கை மொத்தம்", f"₹ {kanikkai_tot:,.2f}")
-            m3.metric("வைப்பு நிதி மொத்தம்", f"₹ {vaipu_tot:,.2f}")
-            m4.metric("மொத்த பதிவுகள்", f"{total_entries} எண்கள்")
-
-            st.markdown("---")
-            st.dataframe(filtered_df, use_container_width=True)
-
-            st.markdown("#### 📥 அறிக்கையை பதிவிறக்கம் செய்ய / பிரிண்ட் எடுக்க")
-            col_p1, col_p2, col_p3 = st.columns(3)
-
-            with col_p1:
-                pdf_report_bytes = generate_full_report_pdf(filtered_df)
-                st.download_button(
-                    label="🖨️ முழு PDF Report (Print-Ready)",
-                    data=pdf_report_bytes,
-                    file_name=f"Kovil_Full_Report_{datetime.now().strftime('%d_%m_%Y')}.pdf",
-                    mime="application/pdf"
-                )
-            with col_p2:
-                buffer_excel = io.BytesIO()
-                with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
-                    filtered_df.to_excel(writer, index=False, sheet_name='Receipts_Report')
-                st.download_button(
-                    label="📥 Excel Report டவுன்லோட்",
-                    data=buffer_excel.getvalue(),
-                    file_name=f"Kovil_Report_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            with col_p3:
-                csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button(
-                    label="📄 CSV File டவுன்லோட்",
-                    data=csv,
-                    file_name=f"Kovil_Report_{datetime.now().strftime('%d_%m_%Y')}.csv",
-                    mime="text/csv"
-                )
+    if st.button("💾 செலவைச் சேமி", key="btn_save_selavu"):
+        if not title_final or exp_amount <= 0:
+            st.warning("⚠️ தயவுசெய்து செலவு விவரம் மற்றும் தொகையை நிரப்பவும்!")
         else:
-            st.info("இன்னும் பதிவுகள் எதுவும் செய்யப்படவில்லை.")
-    except Exception as e:
-        st.error(f"டேட்டாவை வாசிக்க முடியவில்லை: {e}")
-
-# --- TAB 3: DELETE ---
-with tab3:
-    st.subheader("🗑️ தவறான பதிவை நீக்குதல்")
-    conn = sqlite3.connect(DB_NAME)
-    df_del = pd.read_sql_query("SELECT receipt_no, name, amount FROM receipts ORDER BY receipt_no DESC", conn)
-    conn.close()
-
-    if not df_del.empty:
-        receipt_list = [f"ரசீது எண்: {row['receipt_no']} - {row['name']} (₹{row['amount']})" for _, row in
-                        df_del.iterrows()]
-        selected_item = st.selectbox("நீக்க வேண்டிய ரசீதைத் தேர்ந்தெடுக்கவும்:", receipt_list)
-        target_id = int(selected_item.split("-")[0].replace("ரசீது எண்:", "").strip())
-
-        if st.button("❌ இந்த ரசீதை நீக்கு (Delete Entry)"):
             try:
                 conn = sqlite3.connect(DB_NAME)
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM receipts WHERE receipt_no = ?", (target_id,))
+                current_date = datetime.now().strftime("%d-%m-%Y")
+                cursor.execute('''
+                    INSERT INTO expenses (date, category, title, amount, remarks)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (current_date, exp_category, title_final, exp_amount, remarks))
+                conn.commit()
+                exp_id = cursor.lastrowid
+                conn.close()
+
+                st.success(f"✅ செலவு பதிவு செய்யப்பட்டது! பதிவு எண்: {exp_id}")
+            except Exception as e:
+                st.error(f"❌ சேமிப்பதில் எர்ரர்: {e}")
+
+# --- TAB 3: REPORTS (VARAVU & SELAVU) ---
+with tab3:
+    st.subheader("📊 வரவு - செலவு கணக்கு அறிக்கைகள்")
+
+    report_type = st.radio("பார்க்க வேண்டிய அறிக்கை:",
+                           ["💰 மொத்த கணக்கு சுருக்கம் (Overview)", "📥 வரவு பட்டியல் (Income)",
+                            "📤 செலவு பட்டியல் (Expenses)"], horizontal=True)
+
+    conn = sqlite3.connect(DB_NAME)
+    df_v = pd.read_sql_query(
+        "SELECT receipt_no as 'எண்', date as 'தேதி', category as 'வகை', name as 'விவரம்/பெயர்', city as 'ஊர்', amount as 'தொகை (₹)' FROM receipts",
+        conn)
+    df_s = pd.read_sql_query(
+        "SELECT expense_id as 'எண்', date as 'தேதி', category as 'வகை', title as 'விவரம்/பெயர்', remarks as 'குறிப்பு', amount as 'தொகை (₹)' FROM expenses",
+        conn)
+    conn.close()
+
+    tot_v = df_v['தொகை (₹)'].sum() if not df_v.empty else 0.0
+    tot_s = df_s['தொகை (₹)'].sum() if not df_s.empty else 0.0
+    net_balance = tot_v - tot_s
+
+    # --- OVERVIEW ---
+    if report_type == "💰 மொத்த கணக்கு சுருக்கம் (Overview)":
+        st.markdown("### 🏛️ கோவில் நிதி நிலை சுருக்கம்")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("📥 மொத்த வரவு (Total Income)", f"₹ {tot_v:,.2f}")
+        m2.metric("📤 மொத்த செலவு (Total Expenses)", f"₹ {tot_s:,.2f}")
+
+        # Color coding for balance
+        if net_balance >= 0:
+            m3.metric("💵 கையிருப்பு (Net Balance)", f"₹ {net_balance:,.2f}",
+                      delta=f"₹ {net_balance:,.2f} (பரிசீலனையில்)")
+        else:
+            m3.metric("⚠️ கையிருப்பு (Deficit)", f"₹ {net_balance:,.2f}", delta=f"₹ {net_balance:,.2f} (பற்றாக்குறை)")
+
+        st.markdown("---")
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            st.markdown("#### 📥 சமீபத்திய வரவுகள்")
+            st.dataframe(df_v.tail(5), use_container_width=True)
+        with col_c2:
+            st.markdown("#### 📤 சமீபத்திய செலவுகள்")
+            st.dataframe(df_s.tail(5), use_container_width=True)
+
+    # --- VARAVU REPORT ---
+    elif report_type == "📥 வரவு பட்டியல் (Income)":
+        st.markdown("### 📥 வரவு பதிவேடு")
+        if not df_v.empty:
+            st.dataframe(df_v.sort_values(by='எண்', ascending=False), use_container_width=True)
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                pdf_v_bytes = generate_full_report_pdf(df_v, "வரவு அறிக்கை")
+                st.download_button("🖨️ வரவு PDF Report", data=pdf_v_bytes,
+                                   file_name=f"Varavu_Report_{datetime.now().strftime('%d_%m_%Y')}.pdf",
+                                   mime="application/pdf")
+            with col_p2:
+                buffer_v_excel = io.BytesIO()
+                with pd.ExcelWriter(buffer_v_excel, engine='openpyxl') as writer:
+                    df_v.to_excel(writer, index=False, sheet_name='Varavu')
+                st.download_button("📥 வரவு Excel Report", data=buffer_v_excel.getvalue(),
+                                   file_name=f"Varavu_{datetime.now().strftime('%d_%m_%Y')}.xlsx")
+        else:
+            st.info("வரவு பதிவுகள் எதுவுமில்லை.")
+
+    # --- SELAVU REPORT ---
+    elif report_type == "📤 செலவு பட்டியல் (Expenses)":
+        st.markdown("### 📤 செலவு பதிவேடு")
+        if not df_s.empty:
+            st.dataframe(df_s.sort_values(by='எண்', ascending=False), use_container_width=True)
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                pdf_s_bytes = generate_full_report_pdf(df_s, "செலவு அறிக்கை")
+                st.download_button("🖨️ செலவு PDF Report", data=pdf_s_bytes,
+                                   file_name=f"Selavu_Report_{datetime.now().strftime('%d_%m_%Y')}.pdf",
+                                   mime="application/pdf")
+            with col_s2:
+                buffer_s_excel = io.BytesIO()
+                with pd.ExcelWriter(buffer_s_excel, engine='openpyxl') as writer:
+                    df_s.to_excel(writer, index=False, sheet_name='Selavu')
+                st.download_button("📥 செலவு Excel Report", data=buffer_s_excel.getvalue(),
+                                   file_name=f"Selavu_{datetime.now().strftime('%d_%m_%Y')}.xlsx")
+        else:
+            st.info("செலவு பதிவுகள் எதுவுமில்லை.")
+
+# --- TAB 4: DELETE ---
+with tab4:
+    st.subheader("🗑️ தவறான பதிவை நீக்குதல்")
+    del_type = st.radio("எந்த பதிவை நீக்க வேண்டும்?", ["வரவு (Receipt)", "செலவு (Expense)"], horizontal=True)
+
+    conn = sqlite3.connect(DB_NAME)
+    if del_type == "வரவு (Receipt)":
+        df_del = pd.read_sql_query("SELECT receipt_no as id, name, amount FROM receipts ORDER BY receipt_no DESC", conn)
+    else:
+        df_del = pd.read_sql_query(
+            "SELECT expense_id as id, title as name, amount FROM expenses ORDER BY expense_id DESC", conn)
+    conn.close()
+
+    if not df_del.empty:
+        item_list = [f"பதிவு எண்: {row['id']} - {row['name']} (₹{row['amount']})" for _, row in df_del.iterrows()]
+        selected_item = st.selectbox("நீக்க வேண்டிய பதிவைத் தேர்ந்தெடுக்கவும்:", item_list)
+        target_id = int(selected_item.split("-")[0].replace("பதிவு எண்:", "").strip())
+
+        if st.button("❌ இந்த பதிவை நீக்கு"):
+            try:
+                conn = sqlite3.connect(DB_NAME)
+                cursor = conn.cursor()
+                if del_type == "வரவு (Receipt)":
+                    cursor.execute("DELETE FROM receipts WHERE receipt_no = ?", (target_id,))
+                else:
+                    cursor.execute("DELETE FROM expenses WHERE expense_id = ?", (target_id,))
                 conn.commit()
                 conn.close()
-                st.success(f"✅ ரசீது எண் {target_id} நீக்கப்பட்டது!")
+                st.success(f"✅ பதிவு எண் {target_id} நீக்கப்பட்டது!")
                 st.rerun()
             except Exception as e:
                 st.error(f"நீக்குவதில் எர்ரர்: {e}")
