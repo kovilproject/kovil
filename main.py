@@ -272,6 +272,19 @@ def generate_excel_report(rows, report_type, category, total_amt):
 st.set_page_config(
     page_title="அருள்மிகு பெத்தையா காடேரி அம்பிகை", page_icon="🛕", layout="wide"
 )
+# PWA / Mobile App Support
+pwa_code = """
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/sw.js').then(function(registration) {
+        console.log('ServiceWorker registration successful');
+      });
+    });
+  }
+</script>
+"""
+st.markdown(pwa_code, unsafe_allow_html=True)
 
 # Authentication Session State
 if "logged_in" not in st.session_state:
