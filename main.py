@@ -327,7 +327,7 @@ else:
         st.session_state.logged_in = False
         st.rerun()
 
-    st.title("🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை கணக்கு மேலாண்மை")
+    st.title("🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ  மண்டகப்படி")
 
     # 3 TABS CREATION HERE
     tab1, tab2, tab3 = st.tabs(
