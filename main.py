@@ -11,6 +11,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ---------------------------------------------------------
 # STREAMLIT PAGE CONFIG & SESSION INITIALIZATION
@@ -19,7 +20,6 @@ st.set_page_config(
     page_title="அருள்மிகு பெத்தையா காடேரி அம்பிகை", page_icon="🛕", layout="wide"
 )
 
-# Page Refresh / Reload ஆனாலும் Logout ஆகாமல் இருக்க Query Params மேலாண்மை
 query_params = st.query_params
 
 if "logged_in" not in st.session_state:
@@ -30,12 +30,32 @@ if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.username = ""
 
-# Mobile Viewport & Pull-to-Refresh Prevent CSS
+# Mobile Viewport & Thermal Print Specific CSS
 st.markdown(
     """
     <style>
     body, .stApp {
         overscroll-behavior-y: contain;
+    }
+
+    /* Thermal Print Styling */
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        #thermal-receipt, #thermal-receipt * {
+            visibility: visible;
+        }
+        #thermal-receipt {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 80mm; /* 80mm Thermal Printer Standard */
+            font-family: monospace, sans-serif;
+            font-size: 12px;
+            padding: 5mm;
+            color: black !important;
+        }
     }
     </style>
     """,
@@ -108,7 +128,6 @@ def init_db():
             )
         """)
 
-        # Database Schema Update (Existing tables handled safely)
         cursor.execute("PRAGMA table_info(receipts)")
         columns = [column[1] for column in cursor.fetchall()]
         if "phone" not in columns:
@@ -132,8 +151,51 @@ init_db()
 
 
 # ---------------------------------------------------------
-# HELPER FUNCTIONS (PDF & EXCEL GENERATION)
+# HELPER FUNCTIONS (PDF, EXCEL & THERMAL HTML GENERATION)
 # ---------------------------------------------------------
+def render_thermal_receipt_html(data):
+    # data: (receipt_no, date, category, name, city, amount, phone, payment_method)
+    r_no, r_date, r_cat, r_name, r_city, r_amt, r_phone, r_pay = data
+
+    html_code = f"""
+    <div id="thermal-receipt" style="width: 280px; font-family: 'Courier New', monospace; border: 1px dashed #000; padding: 10px; margin: auto; background: #fff; color: #000;">
+        <div style="text-align: center; font-weight: bold; font-size: 14px;">
+            அருள்மிகு பெத்தையா காடேரி அம்பிகை
+        </div>
+        <div style="text-align: center; font-size: 10px; margin-bottom: 5px;">
+            மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ மண்டகப்படி
+        </div>
+        <hr style="border-top: 1px dashed #000;">
+        <table style="width: 100%; font-size: 11px; text-align: left;">
+            <tr><td><b>ரசீது எண்:</b> {r_no}</td><td style="text-align:right;"><b>தேதி:</b> {r_date}</td></tr>
+        </table>
+        <hr style="border-top: 1px dashed #000;">
+        <div style="font-size: 11px; line-height: 1.5;">
+            <b>வரவு வகை:</b> {r_cat}<br>
+            <b>பெயர்:</b> {r_name}<br>
+            <b>ஊர்:</b> {r_city if r_city else '-'}<br>
+            <b>கைபேசி:</b> {r_phone if r_phone else '-'}<br>
+            <b>செலுத்திய முறை:</b> {r_pay if r_pay else 'Cash'}<br>
+        </div>
+        <hr style="border-top: 1px dashed #000;">
+        <div style="text-align: center; font-size: 15px; font-weight: bold; margin: 5px 0;">
+            தொகை: Rs. {r_amt:,.2f}/-
+        </div>
+        <hr style="border-top: 1px dashed #000;">
+        <div style="text-align: center; font-size: 10px; margin-top: 5px;">
+            நன்றி! அருள்மிகு பெத்தையா காடேரி அம்பிகை துணை!
+        </div>
+    </div>
+    <br>
+    <div style="text-align: center;">
+        <button onclick="window.print()" style="background-color: #04AA6D; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+            🖨️ பிரிண்ட் செய்க (Print Now)
+        </button>
+    </div>
+    """
+    return html_code
+
+
 def get_pdf_font():
     local_font = "NotoSansTamil-Regular.ttf"
     if os.path.exists(local_font):
@@ -158,7 +220,7 @@ def get_pdf_font():
 
 
 def generate_receipt_pdf(
-    title, name, city, amount, receipt_no, date_str, phone, pay_method
+        title, name, city, amount, receipt_no, date_str, phone, pay_method
 ):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -535,7 +597,7 @@ else:
                     )
 
         st.divider()
-        st.subheader("🖨️ ரசீது பதிவிறக்கம் (PDF Download)")
+        st.subheader("🖨️ ரசீது அச்சிடுதல் (Thermal & A4 PDF)")
 
         default_r_no = st.session_state.get("last_receipt_id", 1)
         r_no_input = st.number_input(
@@ -553,9 +615,18 @@ else:
                     " phone, payment_method FROM receipts WHERE receipt_no = ?",
                     (r_no_input,),
                 )
-                data = cursor.fetchone()
+                st.session_state["active_receipt"] = cursor.fetchone()
 
-            if data:
+        if (
+                "active_receipt" in st.session_state
+                and st.session_state["active_receipt"]
+        ):
+            data = st.session_state["active_receipt"]
+
+            col_p1, col_p2 = st.columns(2)
+
+            with col_p1:
+                st.markdown("### 📄 A4 Standard PDF")
                 pdf_bytes = generate_receipt_pdf(
                     data[2],
                     data[3],
@@ -567,13 +638,16 @@ else:
                     data[7],
                 )
                 st.download_button(
-                    label="📥 PDF ரசீது பதிவிறக்கு",
+                    label="📥 A4 PDF பதிவிறக்கு",
                     data=pdf_bytes,
                     file_name=f"Receipt_{data[0]}.pdf",
                     mime="application/pdf",
                 )
-            else:
-                st.error("❌ இந்த ரசீது எண் காணப்படவில்லை!")
+
+            with col_p2:
+                st.markdown("### 🧾 Thermal POS Receipt")
+                thermal_html = render_thermal_receipt_html(data)
+                components.html(thermal_html, height=320, scrolling=True)
 
     # TAB 2: EXPENSE
     with tab2:
@@ -869,7 +943,9 @@ else:
                         "GPay / PhonePe (UPI)",
                         "Bank Transfer (வங்கி மாற்றம்)",
                     ]
-                    cur_method = data[7] if len(data) > 7 and data[7] else "Cash (பணம்)"
+                    cur_method = (
+                        data[7] if len(data) > 7 and data[7] else "Cash (பணம்)"
+                    )
                     e_method = st.selectbox(
                         "செலுத்திய முறை:",
                         pay_methods,
@@ -897,9 +973,7 @@ else:
                     e_amt = st.number_input(
                         "தொகை (₹):", value=float(data[4]), step=50.0
                     )
-                    e_remarks = st.text_input(
-                        "குறிப்பு:", value=data[5] or ""
-                    )
+                    e_remarks = st.text_input("குறிப்பு:", value=data[5] or "")
 
                 update_btn = st.form_submit_button(
                     "🔄 மாற்றங்களை சேமி (Update)", type="primary"
