@@ -1,17 +1,51 @@
-from datetime import datetime
+import base64
+from datetime import date, datetime
 import io
 import os
 import sqlite3
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+import pandas as pd
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 import streamlit as st
-import base64
+
+# ---------------------------------------------------------
+# STREAMLIT PAGE CONFIG & SESSION INITIALIZATION
+# ---------------------------------------------------------
+st.set_page_config(
+    page_title="அருள்மிகு பெத்தையா காடேரி அம்பிகை", page_icon="🛕", layout="wide"
+)
+
+# Page Refresh / Reload ஆனாலும் Logout ஆகாமல் இருக்க Query Params மேலாண்மை
+query_params = st.query_params
+
+if "logged_in" not in st.session_state:
+    if query_params.get("logged_in") == "true":
+        st.session_state.logged_in = True
+        st.session_state.username = query_params.get("user", "admin")
+    else:
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+
+# Mobile Viewport & Pull-to-Refresh Prevent CSS
+st.markdown(
+    """
+    <style>
+    body, .stApp {
+        overscroll-behavior-y: contain;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
+# ---------------------------------------------------------
+# BACKGROUND SETUP
+# ---------------------------------------------------------
 def set_local_background(image_path):
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
@@ -29,7 +63,6 @@ def set_local_background(image_path):
     st.markdown(bg_css, unsafe_allow_html=True)
 
 
-# உங்கள் படப் பாதையைக் கொடுக்கவும் (bg.jpg உங்கள் project folder-ல் இருக்க வேண்டும்)
 if os.path.exists("bg.jpg"):
     set_local_background("bg.jpg")
 
@@ -39,52 +72,60 @@ if os.path.exists("bg.jpg"):
 DB_NAME = "kovil_kanakku.db"
 
 
+def get_db_connection():
+    return sqlite3.connect(DB_NAME)
+
+
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS receipts (
-            receipt_no INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT,
-            category TEXT,
-            name TEXT,
-            city TEXT,
-            amount REAL,
-            phone TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS expenses (
-            expense_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT,
-            category TEXT,
-            title TEXT,
-            amount REAL,
-            remarks TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            password TEXT
-        )
-    """)
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS receipts (
+                receipt_no INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                category TEXT,
+                name TEXT,
+                city TEXT,
+                amount REAL,
+                phone TEXT,
+                payment_method TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS expenses (
+                expense_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                category TEXT,
+                title TEXT,
+                amount REAL,
+                remarks TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password TEXT
+            )
+        """)
 
-    # Check if 'phone' column exists in receipts table
-    cursor.execute("PRAGMA table_info(receipts)")
-    columns = [column[1] for column in cursor.fetchall()]
-    if "phone" not in columns:
-        cursor.execute("ALTER TABLE receipts ADD COLUMN phone TEXT")
+        # Database Schema Update (Existing tables handled safely)
+        cursor.execute("PRAGMA table_info(receipts)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if "phone" not in columns:
+            cursor.execute("ALTER TABLE receipts ADD COLUMN phone TEXT")
+        if "payment_method" not in columns:
+            cursor.execute(
+                "ALTER TABLE receipts ADD COLUMN payment_method TEXT DEFAULT"
+                " 'Cash (பணம்)'"
+            )
 
-    # Admin User Verification
-    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
-    if not cursor.fetchone():
-        cursor.execute(
-            "INSERT INTO users (username, password) VALUES (?, ?)",
-            ("admin", "kovil123"),
-        )
-    conn.commit()
-    conn.close()
+        cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                ("admin", "kovil123"),
+            )
+        conn.commit()
 
 
 init_db()
@@ -117,7 +158,7 @@ def get_pdf_font():
 
 
 def generate_receipt_pdf(
-    title, name, city, amount, receipt_no, date_str, phone
+    title, name, city, amount, receipt_no, date_str, phone, pay_method
 ):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -133,7 +174,7 @@ def generate_receipt_pdf(
     )
     c.setFont(font_name, 12)
     c.drawCentredString(
-        width / 2, height - 105, "மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ  மண்டகப்படி"
+        width / 2, height - 105, "மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ மண்டகப்படி"
     )
 
     c.setFont(font_name, 12)
@@ -143,15 +184,20 @@ def generate_receipt_pdf(
     c.setFont(font_name, 16)
     c.drawCentredString(width / 2, height - 210, f"வரவு வகை: {title}")
 
-    c.rect(40, height - 440, width - 80, 200)
+    c.rect(40, height - 460, width - 80, 230)
     c.setFont(font_name, 13)
-    c.drawString(60, height - 260, f"பெயர் (Name)     :   {name}")
+    c.drawString(60, height - 260, f"பெயர் (Name)           :   {name}")
     c.drawString(
         60, height - 300, f"கைபேசி எண் (Phone)     :   {phone if phone else 'N/A'}"
     )
-    c.drawString(60, height - 340, f"ஊர் / பகுதி (City)        :   {city}")
+    c.drawString(60, height - 340, f"ஊர் / பகுதி (City)         :   {city}")
     c.drawString(
-        60, height - 400, f"தொகை (Amount)           :   Rs. {amount}/-"
+        60,
+        height - 380,
+        f"செலுத்திய முறை (Mode)  :   {pay_method if pay_method else 'Cash'}",
+    )
+    c.drawString(
+        60, height - 420, f"தொகை (Amount)           :   Rs. {amount:,.2f}/-"
     )
 
     c.showPage()
@@ -184,54 +230,80 @@ def generate_excel_report(rows, report_type, category, total_amt):
         bottom=Side(style="thin", color="D3D3D3"),
     )
 
-    ws.merge_cells("A1:F1")
+    ws.merge_cells("A1:H1")
     ws["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை"
     ws["A1"].font = title_font
     ws["A1"].alignment = Alignment(horizontal="center")
 
-    ws.merge_cells("A2:F2")
-    ws["A2"] = "மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ  மண்டகப்படி"
+    ws.merge_cells("A2:H2")
+    ws["A2"] = "மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ மண்டகப்படி"
     ws["A2"].font = sub_font
     ws["A2"].alignment = Alignment(horizontal="center")
 
-    ws.merge_cells("A3:F3")
+    ws.merge_cells("A3:H3")
     ws["A3"] = (
-        f"அறிக்கை வகை: {report_type} | பிரிவு: {category} | தேதி:"
-        f" {datetime.now().strftime('%d-%m-%Y')}"
+        f"அறிக்கை வகை: {report_type} | பிரிவு: {category} | உருவாக்கப்பட்ட"
+        f" தேதி: {datetime.now().strftime('%d-%m-%Y')}"
     )
     ws["A3"].font = bold_font
     ws["A3"].alignment = Alignment(horizontal="center")
 
     ws.append([])
-    headers = [
-        "எண்",
-        "தேதி",
-        "வகை",
-        "கைபேசி எண்",
-        "பெயர் / விவரம்",
-        "தொகை (₹)",
-    ]
+    is_income = "வரவு" in report_type
+    id_header = "ரசீது எண்" if is_income else "செலவு எண்"
+
+    if is_income:
+        headers = [
+            "வ.எண் (S.No)",
+            id_header,
+            "தேதி",
+            "வகை",
+            "கைபேசி",
+            "பெயர் / விவரம்",
+            "செலுத்திய முறை",
+            "தொகை (₹)",
+        ]
+    else:
+        headers = [
+            "வ.எண் (S.No)",
+            id_header,
+            "தேதி",
+            "வகை",
+            "குறிப்பு",
+            "விவரம்",
+            "-",
+            "தொகை (₹)",
+        ]
+
     ws.append(headers)
 
     header_row = 5
-    for col_num in range(1, 7):
+    for col_num in range(1, 9):
         cell = ws.cell(row=header_row, column=col_num)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     current_row = 6
-    for row in rows:
+    for idx, row in enumerate(rows, start=1):
         p_val = row[5] if len(row) > 5 and row[5] else "-"
-        ws.append([row[0], row[1], row[2], p_val, row[3], row[4]])
-        for col_num in range(1, 7):
+        p_method = (
+            row[6]
+            if len(row) > 6 and row[6]
+            else ("-" if not is_income else "Cash (பணம்)")
+        )
+
+        ws.append(
+            [idx, row[0], row[1], row[2], p_val, row[3], p_method, row[4]]
+        )
+        for col_num in range(1, 9):
             cell = ws.cell(row=current_row, column=col_num)
             cell.font = data_font
             cell.border = thin_border
-            if col_num == 6:
+            if col_num == 8:
                 cell.number_format = "₹#,##0.00"
                 cell.alignment = Alignment(horizontal="right")
-            elif col_num in [1, 2, 4]:
+            elif col_num in [1, 2, 3, 5, 7]:
                 cell.alignment = Alignment(horizontal="center")
         current_row += 1
 
@@ -239,24 +311,33 @@ def generate_excel_report(rows, report_type, category, total_amt):
         start_row=current_row,
         start_column=1,
         end_row=current_row,
-        end_column=5,
+        end_column=7,
     )
     ws.cell(row=current_row, column=1, value="மொத்தம்").font = bold_font
     ws.cell(row=current_row, column=1).alignment = Alignment(
         horizontal="right"
     )
 
-    tot_cell = ws.cell(row=current_row, column=6, value=total_amt)
+    tot_cell = ws.cell(row=current_row, column=8, value=total_amt)
     tot_cell.font = bold_font
     tot_cell.number_format = "₹#,##0.00"
     tot_cell.alignment = Alignment(horizontal="right")
 
-    for col_num in range(1, 7):
+    for col_num in range(1, 9):
         c = ws.cell(row=current_row, column=col_num)
         c.fill = total_fill
         c.border = thin_border
 
-    column_widths = {"A": 10, "B": 15, "C": 22, "D": 18, "E": 32, "F": 20}
+    column_widths = {
+        "A": 12,
+        "B": 14,
+        "C": 15,
+        "D": 22,
+        "E": 18,
+        "F": 30,
+        "G": 20,
+        "H": 20,
+    }
     for col, width in column_widths.items():
         ws.column_dimensions[col].width = width
 
@@ -267,86 +348,129 @@ def generate_excel_report(rows, report_type, category, total_amt):
 
 
 # ---------------------------------------------------------
-# STREAMLIT UI INTERFACE
+# AUTHENTICATION (LOGIN & SIGN UP)
 # ---------------------------------------------------------
-st.set_page_config(
-    page_title="அருள்மிகு பெத்தையா காடேரி அம்பிகை", page_icon="🛕", layout="wide"
-)
-# PWA / Mobile App Support
-pwa_code = """
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/sw.js').then(function(registration) {
-        console.log('ServiceWorker registration successful');
-      });
-    });
-  }
-</script>
-"""
-st.markdown(pwa_code, unsafe_allow_html=True)
-
-# Authentication Session State
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-
 def login():
     st.title("🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை")
-    st.subheader("கணக்கு மேலாண்மை - உள்நுழைவு")
 
-    with st.form("login_form"):
-        username = st.text_input("பயனர் பெயர் (Username)")
-        password = st.text_input("கடவுச்சொல் (Password)", type="password")
-        submit = st.form_submit_button("🔓 உள்நுழைக (Login)")
+    login_tab, signup_tab = st.tabs(
+        ["🔓 உள்நுழைக (Login)", "📝 புதிய கணக்கு உருவாக்க (Sign Up)"]
+    )
 
-        if submit:
-            conn = sqlite3.connect(DB_NAME)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM users WHERE username = ? AND password = ?",
-                (username, password),
+    with login_tab:
+        st.subheader("கணக்கு மேலாண்மை - உள்நுழைவு")
+        with st.form("login_form"):
+            username = st.text_input("பயனர் பெயர் (Username)")
+            password = st.text_input("கடவுச்சொல் (Password)", type="password")
+            submit = st.form_submit_button(
+                "🔓 உள்நுழைக (Login)", type="primary"
             )
-            user = cursor.fetchone()
-            conn.close()
 
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.rerun()
-            else:
-                st.error("❌ தவறான பயனர் பெயர் அல்லது கடவுச்சொல்!")
+            if submit:
+                if not username or not password:
+                    st.warning("⚠️ பயனர் பெயர் மற்றும் கடவுச்சொல்லை உள்ளிடவும்!")
+                else:
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "SELECT * FROM users WHERE username = ? AND"
+                            " password = ?",
+                            (username, password),
+                        )
+                        user = cursor.fetchone()
+
+                    if user:
+                        st.session_state.logged_in = True
+                        st.session_state.username = username
+                        st.query_params["logged_in"] = "true"
+                        st.query_params["user"] = username
+                        st.rerun()
+                    else:
+                        st.error("❌ தவறான பயனர் பெயர் அல்லது கடவுச்சொல்!")
+
+    with signup_tab:
+        st.subheader("புதிய பயனர் கணக்கு உருவாக்க")
+        with st.form("signup_form", clear_on_submit=True):
+            new_username = st.text_input("புதிய பயனர் பெயர் (New Username)")
+            new_password = st.text_input(
+                "புதிய கடவுச்சொல் (New Password)", type="password"
+            )
+            confirm_password = st.text_input(
+                "கடவுச்சொல்லை உறுதிசெய்க (Confirm Password)", type="password"
+            )
+            signup_submit = st.form_submit_button(
+                "📝 கணக்கு உருவாக்கு (Create Account)", type="primary"
+            )
+
+            if signup_submit:
+                if not new_username or not new_password:
+                    st.warning("⚠️ அனைத்து விவரங்களையும் நிரப்பவும்!")
+                elif new_password != confirm_password:
+                    st.error("❌ கடவுச்சொற்கள் பொருந்தவில்லை!")
+                else:
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "SELECT * FROM users WHERE username = ?",
+                            (new_username,),
+                        )
+                        existing_user = cursor.fetchone()
+
+                        if existing_user:
+                            st.error("❌ இந்த பயனர் பெயர் ஏற்கனவே உள்ளது!")
+                        else:
+                            cursor.execute(
+                                "INSERT INTO users (username, password) VALUES"
+                                " (?, ?)",
+                                (new_username, new_password),
+                            )
+                            conn.commit()
+                            st.success(
+                                "✅ புதிய கணக்கு உருவாக்கப்பட்டது! Login Tab-ல்"
+                                " உள்நுழையலாம்."
+                            )
 
 
+# ---------------------------------------------------------
+# MAIN APPLICATION INTERFACE
+# ---------------------------------------------------------
 if not st.session_state.logged_in:
     login()
 else:
-    # Sidebar Header & Logout
     st.sidebar.title(f"👤 வரவேற்பு: {st.session_state.username}")
     if st.sidebar.button("🚪 வெளியேறு (Logout)"):
         st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.query_params.clear()
         st.rerun()
 
-    st.title("🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ  மண்டகப்படி")
+    st.title(
+        "🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ"
+        " மண்டகப்படி"
+    )
 
-    # 3 TABS CREATION HERE
-    tab1, tab2, tab3 = st.tabs(
+    tab1, tab2, tab3, tab4 = st.tabs(
         [
             "📥 புதிய வரவு (Receipt)",
             "📤 புதிய செலவு (Expense)",
             "📊 அறிக்கைகள் (Reports)",
+            "✏️ பதிவைத் திருத்த (Edit Entry)",
         ]
     )
 
-    # =========================================================
-    # TAB 1: RECEIPT (புதிய வரவு)
-    # =========================================================
+    # TAB 1: RECEIPT
     with tab1:
         st.header("📥 புதிய வரவு பதிவு")
 
         with st.form("receipt_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
+                receipt_date = st.date_input(
+                    "தேதி (Date)",
+                    value=date.today(),
+                    min_value=date(1900, 1, 1),
+                    max_value=date(2100, 12, 31),
+                )
                 category = st.selectbox(
                     "வரவு வகை",
                     [
@@ -357,8 +481,17 @@ else:
                     ],
                 )
                 phone = st.text_input("கைபேசி எண் (Phone No)")
-                name = st.text_input("பெயர் (Name)")
+                payment_method = st.selectbox(
+                    "பணம் செலுத்திய முறை (Payment Method)",
+                    [
+                        "Cash (பணம்)",
+                        "GPay / PhonePe (UPI)",
+                        "Bank Transfer (வங்கி மாற்றம்)",
+                    ],
+                )
+
             with col2:
+                name = st.text_input("பெயர் (Name)")
                 city = st.text_input("ஊர் / பகுதி (City)")
                 amount = st.number_input(
                     "தொகை (₹)", min_value=0.0, step=100.0, format="%.2f"
@@ -374,17 +507,27 @@ else:
                         "⚠️ தயவுசெய்து பெயர் மற்றும் சரியான தொகையை நிரப்பவும்!"
                     )
                 else:
-                    conn = sqlite3.connect(DB_NAME)
-                    cursor = conn.cursor()
-                    curr_date = datetime.now().strftime("%d-%m-%Y")
-                    cursor.execute(
-                        "INSERT INTO receipts (date, category, name, city,"
-                        " amount, phone) VALUES (?, ?, ?, ?, ?, ?)",
-                        (curr_date, category, name, city, amount, phone),
-                    )
-                    conn.commit()
-                    rec_id = cursor.lastrowid
-                    conn.close()
+                    formatted_date = receipt_date.strftime("%d-%m-%Y")
+
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO receipts (date, category, name, city,"
+                            " amount, phone, payment_method) VALUES (?, ?,"
+                            " ?, ?, ?, ?, ?)",
+                            (
+                                formatted_date,
+                                category,
+                                name,
+                                city,
+                                amount,
+                                phone,
+                                payment_method,
+                            ),
+                        )
+                        conn.commit()
+                        rec_id = cursor.lastrowid
+
                     st.session_state["last_receipt_id"] = rec_id
                     st.success(
                         "✅ வரவு வெற்றிகரமாகச் சேமிக்கப்பட்டது! (ரசீது எண்:"
@@ -403,15 +546,14 @@ else:
         )
 
         if st.button("🔍 ரசீது தேடு"):
-            conn = sqlite3.connect(DB_NAME)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT receipt_no, date, category, name, city, amount, phone"
-                " FROM receipts WHERE receipt_no = ?",
-                (r_no_input,),
-            )
-            data = cursor.fetchone()
-            conn.close()
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT receipt_no, date, category, name, city, amount,"
+                    " phone, payment_method FROM receipts WHERE receipt_no = ?",
+                    (r_no_input,),
+                )
+                data = cursor.fetchone()
 
             if data:
                 pdf_bytes = generate_receipt_pdf(
@@ -422,6 +564,7 @@ else:
                     data[0],
                     data[1],
                     data[6],
+                    data[7],
                 )
                 st.download_button(
                     label="📥 PDF ரசீது பதிவிறக்கு",
@@ -432,15 +575,19 @@ else:
             else:
                 st.error("❌ இந்த ரசீது எண் காணப்படவில்லை!")
 
-    # =========================================================
-    # TAB 2: EXPENSE (புதிய செலவு)
-    # =========================================================
+    # TAB 2: EXPENSE
     with tab2:
         st.header("📤 புதிய செலவு பதிவு")
 
         with st.form("expense_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
+                expense_date = st.date_input(
+                    "செலவு தேதி (Date)",
+                    value=date.today(),
+                    min_value=date(1900, 1, 1),
+                    max_value=date(2100, 12, 31),
+                )
                 exp_category = st.selectbox(
                     "செலவு வகை",
                     [
@@ -455,7 +602,10 @@ else:
                 exp_title = st.text_input("விவரம் (Title)")
             with col2:
                 exp_amount = st.number_input(
-                    "செலவுத் தொகை (₹)", min_value=0.0, step=50.0, format="%.2f"
+                    "செலவுத் தொகை (₹)",
+                    min_value=0.0,
+                    step=50.0,
+                    format="%.2f",
                 )
                 exp_remarks = st.text_input("குறிப்பு (Remarks)")
 
@@ -467,27 +617,24 @@ else:
                 if not exp_title or exp_amount <= 0:
                     st.warning("⚠️ விவரம் மற்றும் சரியான தொகையை நிரப்பவும்!")
                 else:
-                    conn = sqlite3.connect(DB_NAME)
-                    cursor = conn.cursor()
-                    curr_date = datetime.now().strftime("%d-%m-%Y")
-                    cursor.execute(
-                        "INSERT INTO expenses (date, category, title, amount,"
-                        " remarks) VALUES (?, ?, ?, ?, ?)",
-                        (
-                            curr_date,
-                            exp_category,
-                            exp_title,
-                            exp_amount,
-                            exp_remarks,
-                        ),
-                    )
-                    conn.commit()
-                    conn.close()
+                    formatted_exp_date = expense_date.strftime("%d-%m-%Y")
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO expenses (date, category, title,"
+                            " amount, remarks) VALUES (?, ?, ?, ?, ?)",
+                            (
+                                formatted_exp_date,
+                                exp_category,
+                                exp_title,
+                                exp_amount,
+                                exp_remarks,
+                            ),
+                        )
+                        conn.commit()
                     st.success("✅ செலவு பதிவு வெற்றிகரமாக சேமிக்கப்பட்டது!")
 
-    # =========================================================
-    # TAB 3: REPORTS (அறிக்கைகள் & Delete Option)
-    # =========================================================
+    # TAB 3: REPORTS
     with tab3:
         st.header("📊 கணக்கு அறிக்கைகள்")
 
@@ -513,34 +660,36 @@ else:
             ],
         )
 
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        if "வரவு" in view_type:
-            query = (
-                "SELECT receipt_no, date, category, name, amount, phone FROM"
-                " receipts"
-            )
-            if cat_filter != "அனைத்தும் (All)":
-                query += f" WHERE category = '{cat_filter}'"
-            query += " ORDER BY receipt_no DESC"
-        else:
-            query = (
-                "SELECT expense_id, date, category, title, amount, remarks"
-                " FROM expenses"
-            )
-            if cat_filter != "அனைத்தும் (All)":
-                query += f" WHERE category = '{cat_filter}'"
-            query += " ORDER BY expense_id DESC"
+            params = []
+            if "வரவு" in view_type:
+                query = (
+                    "SELECT receipt_no, date, category, name, amount, phone,"
+                    " payment_method FROM receipts"
+                )
+                if cat_filter != "அனைத்தும் (All)":
+                    query += " WHERE category = ?"
+                    params.append(cat_filter)
+                query += " ORDER BY receipt_no ASC"
+            else:
+                query = (
+                    "SELECT expense_id, date, category, title, amount, remarks"
+                    " FROM expenses"
+                )
+                if cat_filter != "அனைத்தும் (All)":
+                    query += " WHERE category = ?"
+                    params.append(cat_filter)
+                query += " ORDER BY expense_id ASC"
 
-        cursor.execute(query)
-        rows = cursor.fetchall()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
 
-        cursor.execute("SELECT SUM(amount) FROM receipts")
-        tot_v = cursor.fetchone()[0] or 0.0
-        cursor.execute("SELECT SUM(amount) FROM expenses")
-        tot_s = cursor.fetchone()[0] or 0.0
-        conn.close()
+            cursor.execute("SELECT SUM(amount) FROM receipts")
+            tot_v = cursor.fetchone()[0] or 0.0
+            cursor.execute("SELECT SUM(amount) FROM expenses")
+            tot_s = cursor.fetchone()[0] or 0.0
 
         filtered_tot = sum(r[4] for r in rows) if rows else 0.0
 
@@ -571,47 +720,66 @@ else:
             )
 
             if st.button("❌ பதிவை நீக்கு (Confirm Delete)", type="primary"):
-                conn = sqlite3.connect(DB_NAME)
-                cursor = conn.cursor()
-                if "வரவு" in view_type:
-                    cursor.execute(
-                        "DELETE FROM receipts WHERE receipt_no = ?",
-                        (delete_id,),
-                    )
-                else:
-                    cursor.execute(
-                        "DELETE FROM expenses WHERE expense_id = ?",
-                        (delete_id,),
-                    )
-
-                if cursor.rowcount > 0:
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    if "வரவு" in view_type:
+                        cursor.execute(
+                            "DELETE FROM receipts WHERE receipt_no = ?",
+                            (delete_id,),
+                        )
+                    else:
+                        cursor.execute(
+                            "DELETE FROM expenses WHERE expense_id = ?",
+                            (delete_id,),
+                        )
+                    deleted_count = cursor.rowcount
                     conn.commit()
-                    conn.close()
+
+                if deleted_count > 0:
                     st.success(
                         f"✅ எண் {delete_id} பதிவு வெற்றிகரமாக நீக்கப்பட்டது!"
                     )
                     st.rerun()
                 else:
-                    conn.close()
                     st.error(f"❌ எண் {delete_id} காணப்படவில்லை!")
 
         st.divider()
 
         # DATA TABLE DISPLAY
-        st.dataframe(
-            rows,
-            column_config={
-                "0": "எண்",
-                "1": "தேதி",
-                "2": "வகை",
-                "3": "பெயர்/விவரம்",
-                "4": "தொகை (₹)",
-                "5": "கைபேசி/குறிப்பு",
-            },
-            use_container_width=True,
-        )
-
         if rows:
+            id_col_name = "ரசீது எண்" if "வரவு" in view_type else "செலவு எண்"
+            display_data = []
+
+            for idx, r in enumerate(rows, start=1):
+                p_val = r[5] if len(r) > 5 and r[5] else "-"
+                p_method = (
+                    r[6]
+                    if len(r) > 6 and r[6]
+                    else ("-" if "செலவு" in view_type else "Cash (பணம்)")
+                )
+
+                if "வரவு" in view_type:
+                    display_data.append(
+                        [idx, r[0], r[1], r[2], r[3], p_method, r[4], p_val]
+                    )
+                else:
+                    display_data.append(
+                        [idx, r[0], r[1], r[2], r[3], "-", r[4], p_val]
+                    )
+
+            columns = [
+                "வ.எண் (S.No)",
+                id_col_name,
+                "தேதி",
+                "வகை",
+                "பெயர் / விவரம்",
+                "செலுத்திய முறை",
+                "தொகை (₹)",
+                "கைபேசி / குறிப்பு",
+            ]
+            df = pd.DataFrame(display_data, columns=columns)
+            st.dataframe(df, use_container_width=True)
+
             excel_data = generate_excel_report(
                 rows, view_type, cat_filter, filtered_tot
             )
@@ -621,3 +789,158 @@ else:
                 file_name=f"Kovil_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
+        else:
+            st.info("தகவல்கள் எதுவும் இல்லை (No records found).")
+
+    # TAB 4: EDIT ENTRY
+    with tab4:
+        st.header("✏️ பதிவை மீண்டும் திருத்துதல் (Edit Entry)")
+
+        edit_type = st.radio(
+            "எதை திருத்த வேண்டும்?:",
+            ["📥 வரவு (Receipt)", "📤 செலவு (Expense)"],
+            horizontal=True,
+        )
+
+        edit_id = st.number_input(
+            "திருத்த வேண்டிய எண் (Receipt No / Expense ID):",
+            min_value=1,
+            step=1,
+        )
+
+        if st.button("🔍 தகவலைக் கொண்டுவா"):
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                if "வரவு" in edit_type:
+                    cursor.execute(
+                        "SELECT receipt_no, date, category, name, city, amount,"
+                        " phone, payment_method FROM receipts WHERE receipt_no"
+                        " = ?",
+                        (edit_id,),
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT expense_id, date, category, title, amount,"
+                        " remarks FROM expenses WHERE expense_id = ?",
+                        (edit_id,),
+                    )
+                st.session_state["edit_data"] = cursor.fetchone()
+
+        if "edit_data" in st.session_state and st.session_state["edit_data"]:
+            data = st.session_state["edit_data"]
+            st.info(f"எண் {data[0]}-ன் பழைய தகவல்கள் மாற்றத்திற்குத் தயார்.")
+
+            with st.form("edit_form"):
+                try:
+                    p_date = datetime.strptime(data[1], "%d-%m-%Y").date()
+                except Exception:
+                    p_date = date.today()
+
+                e_date = st.date_input(
+                    "புதிய தேதி:",
+                    value=p_date,
+                    min_value=date(1900, 1, 1),
+                    max_value=date(2100, 12, 31),
+                )
+
+                if "வரவு" in edit_type:
+                    cat_list = [
+                        "சிறப்பு வைப்பு நிதியாளர்கள்",
+                        "சிறப்பு காணிக்கையாளர்கள்",
+                        "காணிக்கையாளர்கள் வரவுகள்",
+                        "காணிக்கையாளர்கள்",
+                    ]
+                    e_cat = st.selectbox(
+                        "வரவு வகை:",
+                        cat_list,
+                        index=cat_list.index(data[2])
+                        if data[2] in cat_list
+                        else 0,
+                    )
+                    e_name = st.text_input("பெயர்:", value=data[3])
+                    e_city = st.text_input("ஊர்:", value=data[4])
+                    e_amt = st.number_input(
+                        "தொகை (₹):", value=float(data[5]), step=50.0
+                    )
+                    e_phone = st.text_input("கைபேசி:", value=data[6] or "")
+
+                    pay_methods = [
+                        "Cash (பணம்)",
+                        "GPay / PhonePe (UPI)",
+                        "Bank Transfer (வங்கி மாற்றம்)",
+                    ]
+                    cur_method = data[7] if len(data) > 7 and data[7] else "Cash (பணம்)"
+                    e_method = st.selectbox(
+                        "செலுத்திய முறை:",
+                        pay_methods,
+                        index=pay_methods.index(cur_method)
+                        if cur_method in pay_methods
+                        else 0,
+                    )
+                else:
+                    cat_list = [
+                        "மின்சாரக் கட்டணம் (EB Bill)",
+                        "பூஜைப் பொருட்கள்",
+                        "அன்னதானம்",
+                        "வேலை ஆள் கூலி",
+                        "பராமரிப்புச் செலவு",
+                        "இதர செலவுகள்",
+                    ]
+                    e_cat = st.selectbox(
+                        "செலவு வகை:",
+                        cat_list,
+                        index=cat_list.index(data[2])
+                        if data[2] in cat_list
+                        else 0,
+                    )
+                    e_title = st.text_input("விவரம்:", value=data[3])
+                    e_amt = st.number_input(
+                        "தொகை (₹):", value=float(data[4]), step=50.0
+                    )
+                    e_remarks = st.text_input(
+                        "குறிப்பு:", value=data[5] or ""
+                    )
+
+                update_btn = st.form_submit_button(
+                    "🔄 மாற்றங்களை சேமி (Update)", type="primary"
+                )
+
+                if update_btn:
+                    formatted_u_date = e_date.strftime("%d-%m-%Y")
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        if "வரவு" in edit_type:
+                            cursor.execute(
+                                "UPDATE receipts SET date=?, category=?,"
+                                " name=?, city=?, amount=?, phone=?,"
+                                " payment_method=? WHERE receipt_no=?",
+                                (
+                                    formatted_u_date,
+                                    e_cat,
+                                    e_name,
+                                    e_city,
+                                    e_amt,
+                                    e_phone,
+                                    e_method,
+                                    data[0],
+                                ),
+                            )
+                        else:
+                            cursor.execute(
+                                "UPDATE expenses SET date=?, category=?,"
+                                " title=?, amount=?, remarks=? WHERE"
+                                " expense_id=?",
+                                (
+                                    formatted_u_date,
+                                    e_cat,
+                                    e_title,
+                                    e_amt,
+                                    e_remarks,
+                                    data[0],
+                                ),
+                            )
+                        conn.commit()
+
+                    st.success("✅ தகவல்கள் வெற்றிகரமாக புதுப்பிக்கப்பட்டன!")
+                    del st.session_state["edit_data"]
+                    st.rerun()
