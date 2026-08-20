@@ -549,6 +549,7 @@ else:
                         "Cash (பணம்)",
                         "GPay / PhonePe (UPI)",
                         "Bank Transfer (வங்கி மாற்றம்)",
+                         "Money order (மணி ஆர்டர் )",
                     ],
                 )
 
