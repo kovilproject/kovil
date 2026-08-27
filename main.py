@@ -50,7 +50,7 @@ st.markdown(
             position: absolute;
             left: 0;
             top: 0;
-            width: 80mm; /* 80mm Thermal Printer Standard */
+            width: 80mm;
             font-family: monospace, sans-serif;
             font-size: 12px;
             padding: 5mm;
@@ -100,7 +100,6 @@ def init_db():
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
-        # Unique Donor Table Creation
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS donors (
                 donor_id TEXT PRIMARY KEY,
@@ -166,7 +165,6 @@ def init_db():
 init_db()
 
 
-# Donor Unique ID Auto Generation Helper
 def generate_donor_id():
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -180,7 +178,7 @@ def generate_donor_id():
 
 
 # ---------------------------------------------------------
-# HELPER FUNCTIONS (PDF, EXCEL & THERMAL HTML GENERATION)
+# HELPER FUNCTIONS (PDF & EXCEL GENERATION)
 # ---------------------------------------------------------
 def render_thermal_receipt_html(data):
     r_no, r_date, r_cat, r_name, r_city, r_amt, r_phone, r_pay = data[:8]
@@ -299,140 +297,72 @@ def generate_receipt_pdf(
     return buffer
 
 
-def generate_excel_report(rows, report_type, category, selected_year, total_amt):
+def generate_combined_excel_report(df_combined, total_income, total_expense, net_balance):
+    """வரவும் செலவும் இணைந்த Excel அறிக்கை"""
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "அறிக்கை"
+    ws.title = "வரவு செலவு அறிக்கை"
 
     title_font = Font(name="Calibri", size=16, bold=True, color="800000")
-    sub_font = Font(name="Calibri", size=11, italic=True)
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    data_font = Font(name="Calibri", size=11)
     bold_font = Font(name="Calibri", size=11, bold=True)
-
-    header_fill = PatternFill(
-        start_color="4A0E17", end_color="4A0E17", fill_type="solid"
-    )
-    total_fill = PatternFill(
-        start_color="EAEAEA", end_color="EAEAEA", fill_type="solid"
-    )
+    header_fill = PatternFill(start_color="4A0E17", end_color="4A0E17", fill_type="solid")
+    total_fill = PatternFill(start_color="EAEAEA", end_color="EAEAEA", fill_type="solid")
     thin_border = Border(
-        left=Side(style="thin", color="D3D3D3"),
-        right=Side(style="thin", color="D3D3D3"),
-        top=Side(style="thin", color="D3D3D3"),
-        bottom=Side(style="thin", color="D3D3D3"),
+        left=Side(style="thin", color="D3D3D3"), right=Side(style="thin", color="D3D3D3"),
+        top=Side(style="thin", color="D3D3D3"), bottom=Side(style="thin", color="D3D3D3")
     )
 
     ws.merge_cells("A1:H1")
-    ws["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை"
+    ws["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை - 통합 வரவு செலவு அறிக்கை"
     ws["A1"].font = title_font
     ws["A1"].alignment = Alignment(horizontal="center")
 
-    ws.merge_cells("A2:H2")
-    ws["A2"] = "மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ மண்டகப்படி"
-    ws["A2"].font = sub_font
-    ws["A2"].alignment = Alignment(horizontal="center")
-
-    ws.merge_cells("A3:H3")
-    ws["A3"] = (
-        f"அறிக்கை வகை: {report_type} | பிரிவு: {category} | ஆண்டு: {selected_year} | உருவாக்கப்பட்ட"
-        f" தேதி: {datetime.now().strftime('%d-%m-%Y')}"
-    )
-    ws["A3"].font = bold_font
-    ws["A3"].alignment = Alignment(horizontal="center")
-
+    headers = list(df_combined.columns)
     ws.append([])
-    is_income = "வரவு" in report_type
-    id_header = "ரசீது எண்" if is_income else "செலவு எண்"
-
-    if is_income:
-        headers = [
-            "வ.எண் (S.No)",
-            id_header,
-            "தேதி",
-            "வகை",
-            "கைபேசி",
-            "பெயர் / விவரம்",
-            "செலுத்திய முறை",
-            "தொகை (₹)",
-        ]
-    else:
-        headers = [
-            "வ.எண் (S.No)",
-            id_header,
-            "தேதி",
-            "வகை",
-            "குறிப்பு",
-            "விவரம்",
-            "-",
-            "தொகை (₹)",
-        ]
-
     ws.append(headers)
 
-    header_row = 5
-    for col_num in range(1, 9):
-        cell = ws.cell(row=header_row, column=col_num)
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=3, column=col_num)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    current_row = 6
-    for idx, row in enumerate(rows, start=1):
-        p_val = row[5] if len(row) > 5 and row[5] else "-"
-        p_method = (
-            row[6]
-            if len(row) > 6 and row[6]
-            else ("-" if not is_income else "Cash (பணம்)")
-        )
-
-        ws.append(
-            [idx, row[0], row[1], row[2], p_val, row[3], p_method, row[4]]
-        )
-        for col_num in range(1, 9):
+    current_row = 4
+    for row in df_combined.itertuples(index=False):
+        ws.append(list(row))
+        for col_num in range(1, len(headers) + 1):
             cell = ws.cell(row=current_row, column=col_num)
-            cell.font = data_font
             cell.border = thin_border
-            if col_num == 8:
+            if col_num in [7, 8]:  # வரவு/செலவு தொகைகள்
                 cell.number_format = "₹#,##0.00"
                 cell.alignment = Alignment(horizontal="right")
-            elif col_num in [1, 2, 3, 5, 7]:
+            else:
                 cell.alignment = Alignment(horizontal="center")
         current_row += 1
 
-    ws.merge_cells(
-        start_row=current_row,
-        start_column=1,
-        end_row=current_row,
-        end_column=7,
-    )
-    ws.cell(row=current_row, column=1, value="மொத்தம்").font = bold_font
-    ws.cell(row=current_row, column=1).alignment = Alignment(
-        horizontal="right"
-    )
+    # மொத்த வரவு
+    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
+    ws.cell(row=current_row, column=1, value="மொத்த வரவு (Total Income)").font = bold_font
+    ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="right")
+    ws.cell(row=current_row, column=7, value=float(total_income)).font = bold_font
+    ws.cell(row=current_row, column=7).number_format = "₹#,##0.00"
 
-    tot_cell = ws.cell(row=current_row, column=8, value=float(total_amt))
-    tot_cell.font = bold_font
-    tot_cell.number_format = "₹#,##0.00"
-    tot_cell.alignment = Alignment(horizontal="right")
+    # மொத்த செலவு
+    current_row += 1
+    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
+    ws.cell(row=current_row, column=1, value="மொத்த செலவு (Total Expense)").font = bold_font
+    ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="right")
+    ws.cell(row=current_row, column=8, value=float(total_expense)).font = bold_font
+    ws.cell(row=current_row, column=8).number_format = "₹#,##0.00"
 
-    for col_num in range(1, 9):
-        c = ws.cell(row=current_row, column=col_num)
-        c.fill = total_fill
-        c.border = thin_border
-
-    column_widths = {
-        "A": 12,
-        "B": 14,
-        "C": 15,
-        "D": 22,
-        "E": 18,
-        "F": 30,
-        "G": 20,
-        "H": 20,
-    }
-    for col, width in column_widths.items():
-        ws.column_dimensions[col].width = width
+    # நிகரக் கையிருப்பு
+    current_row += 1
+    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
+    ws.cell(row=current_row, column=1, value="நிகரக் கையிருப்பு (Net Balance)").font = bold_font
+    ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="right")
+    ws.cell(row=current_row, column=7, value=float(net_balance)).font = bold_font
+    ws.cell(row=current_row, column=7).number_format = "₹#,##0.00"
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -440,8 +370,11 @@ def generate_excel_report(rows, report_type, category, selected_year, total_amt)
     return buffer
 
 
-def generate_donor_excel_report(donor_info, df_history, df_summary, grand_total):
+def generate_yearly_matrix_excel(df_matrix, title_name):
+    """ஆண்டு பத்திகளாக (Columns) கொண்ட Matrix வடிவ Excel அறிக்கை"""
     wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "ஆண்டு வாரிய மேட்ரிக்ஸ்"
 
     title_font = Font(name="Calibri", size=15, bold=True, color="800000")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
@@ -453,243 +386,47 @@ def generate_donor_excel_report(donor_info, df_history, df_summary, grand_total)
         top=Side(style="thin", color="D3D3D3"), bottom=Side(style="thin", color="D3D3D3")
     )
 
-    # Sheet 1: Detailed Receipts
-    ws1 = wb.active
-    ws1.title = "ரசீது விவரங்கள்"
+    num_cols = len(df_matrix.columns)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=num_cols)
+    ws["A1"] = f"அருள்மிகு பெத்தையா காடேரி அம்பிகை - {title_name}"
+    ws["A1"].font = title_font
+    ws["A1"].alignment = Alignment(horizontal="center")
 
-    ws1.merge_cells("A1:F1")
-    ws1["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை - நிதியாளர் வரவு அறிக்கை"
-    ws1["A1"].font = title_font
-    ws1["A1"].alignment = Alignment(horizontal="center")
+    headers = list(df_matrix.columns)
+    ws.append([])
+    ws.append(headers)
 
-    d_id = donor_info[0] if donor_info else "-"
-    d_name = donor_info[1] if donor_info else "-"
-    d_city = donor_info[2] if len(donor_info) > 2 and donor_info[2] else "-"
-    d_phone = donor_info[3] if len(donor_info) > 3 and donor_info[3] else "-"
-
-    ws1.cell(row=3, column=1, value=f"ID: {d_id} | பெயர்: {d_name} | ஊர்: {d_city} | போன்: {d_phone}").font = bold_font
-
-    headers1 = ["ரசீது எண்", "தேதி", "ஆண்டு", "வரவு வகை", "செலுத்திய முறை", "தொகை (₹)"]
-    ws1.append([])
-    ws1.append(headers1)
-
-    for col_num in range(1, 7):
-        c = ws1.cell(row=5, column=col_num)
+    for col_num in range(1, num_cols + 1):
+        c = ws.cell(row=3, column=col_num)
         c.font = header_font
         c.fill = header_fill
         c.alignment = Alignment(horizontal="center")
 
-    curr_row_1 = 6
-    for row in df_history.itertuples(index=False):
+    curr_row = 4
+    for row in df_matrix.itertuples(index=False):
         row_list = list(row)
-        row_list[5] = float(row_list[5])
-        ws1.append(row_list)
+        ws.append(row_list)
+        is_last_row = (curr_row == 3 + len(df_matrix))
 
-        for c_idx in range(1, 7):
-            cell = ws1.cell(row=curr_row_1, column=c_idx)
+        for c_idx in range(1, num_cols + 1):
+            cell = ws.cell(row=curr_row, column=c_idx)
             cell.border = thin_border
-            if c_idx == 6:
-                cell.number_format = "₹#,##0.00"
-                cell.alignment = Alignment(horizontal="right")
+            if is_last_row:
+                cell.font = bold_font
+                cell.fill = total_fill
+
+            # தொகைகளுக்கான பத்திகள் (ஆண்டுகள் மற்றும் Total)
+            if c_idx > 3 or (is_last_row and c_idx >= 4):
+                try:
+                    val = float(cell.value)
+                    cell.value = val
+                    cell.number_format = "₹#,##0.00"
+                    cell.alignment = Alignment(horizontal="right")
+                except (ValueError, TypeError):
+                    pass
             else:
                 cell.alignment = Alignment(horizontal="center")
-        curr_row_1 += 1
-
-    # Sheet 1 Total
-    ws1.merge_cells(start_row=curr_row_1, start_column=1, end_row=curr_row_1, end_column=5)
-    ws1.cell(row=curr_row_1, column=1, value="மொத்த வரவு (Grand Total)").font = bold_font
-    ws1.cell(row=curr_row_1, column=1).alignment = Alignment(horizontal="right")
-
-    tot_1 = ws1.cell(row=curr_row_1, column=6, value=float(grand_total))
-    tot_1.font = bold_font
-    tot_1.number_format = "₹#,##0.00"
-    tot_1.alignment = Alignment(horizontal="right")
-
-    for col_num in range(1, 7):
-        c = ws1.cell(row=curr_row_1, column=col_num)
-        c.fill = total_fill
-        c.border = thin_border
-
-    ws1.column_dimensions["A"].width = 15
-    ws1.column_dimensions["B"].width = 15
-    ws1.column_dimensions["C"].width = 12
-    ws1.column_dimensions["D"].width = 30
-    ws1.column_dimensions["E"].width = 20
-    ws1.column_dimensions["F"].width = 20
-
-    # Sheet 2: Yearly Summary
-    ws2 = wb.create_sheet(title="ஆண்டு வாரிய சுருக்கம்")
-    ws2.append(["ஆண்டு (Year)", "வரவு வகை", "மொத்தத் தொகை (₹)"])
-
-    for col_num in range(1, 4):
-        c = ws2.cell(row=1, column=col_num)
-        c.font = header_font
-        c.fill = header_fill
-        c.alignment = Alignment(horizontal="center")
-
-    curr_row_2 = 2
-    for row in df_summary.itertuples(index=False):
-        row_list = list(row)
-        row_list[2] = float(row_list[2])
-        ws2.append(row_list)
-
-        for c_idx in range(1, 4):
-            cell = ws2.cell(row=curr_row_2, column=c_idx)
-            cell.border = thin_border
-            if c_idx == 3:
-                cell.number_format = "₹#,##0.00"
-                cell.alignment = Alignment(horizontal="right")
-            else:
-                cell.alignment = Alignment(horizontal="center")
-        curr_row_2 += 1
-
-    # Sheet 2 Total
-    ws2.merge_cells(start_row=curr_row_2, start_column=1, end_row=curr_row_2, end_column=2)
-    ws2.cell(row=curr_row_2, column=1, value="மொத்த வரவு (Grand Total)").font = bold_font
-    ws2.cell(row=curr_row_2, column=1).alignment = Alignment(horizontal="right")
-
-    tot_2 = ws2.cell(row=curr_row_2, column=3, value=float(grand_total))
-    tot_2.font = bold_font
-    tot_2.number_format = "₹#,##0.00"
-    tot_2.alignment = Alignment(horizontal="right")
-
-    for col_num in range(1, 4):
-        c = ws2.cell(row=curr_row_2, column=col_num)
-        c.fill = total_fill
-        c.border = thin_border
-
-    ws2.column_dimensions["A"].width = 18
-    ws2.column_dimensions["B"].width = 30
-    ws2.column_dimensions["C"].width = 22
-
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-
-def generate_all_donors_excel_report(df_master, df_yearly, grand_total):
-    wb = openpyxl.Workbook()
-
-    title_font = Font(name="Calibri", size=15, bold=True, color="800000")
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    bold_font = Font(name="Calibri", size=11, bold=True)
-    header_fill = PatternFill(start_color="4A0E17", end_color="4A0E17", fill_type="solid")
-    total_fill = PatternFill(start_color="EAEAEA", end_color="EAEAEA", fill_type="solid")
-    thin_border = Border(
-        left=Side(style="thin", color="D3D3D3"), right=Side(style="thin", color="D3D3D3"),
-        top=Side(style="thin", color="D3D3D3"), bottom=Side(style="thin", color="D3D3D3")
-    )
-
-    # Sheet 1: Master List
-    ws1 = wb.active
-    ws1.title = "நிதியாளர்கள் பட்டியல்"
-
-    ws1.merge_cells("A1:E1")
-    ws1["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை - அனைத்து நிதியாளர்கள் விவரம்"
-    ws1["A1"].font = title_font
-    ws1["A1"].alignment = Alignment(horizontal="center")
-
-    headers1 = ["நிதியாளர் ID", "பெயர்", "ஊர்", "கைபேசி எண்", "மொத்த வரவு (₹)"]
-    ws1.append([])
-    ws1.append(headers1)
-
-    for col_num in range(1, 6):
-        c = ws1.cell(row=3, column=col_num)
-        c.font = header_font
-        c.fill = header_fill
-        c.alignment = Alignment(horizontal="center")
-
-    curr_row_1 = 4
-    for row in df_master.itertuples(index=False):
-        row_list = list(row)
-        row_list[4] = float(row_list[4]) if row_list[4] else 0.0
-        ws1.append(row_list)
-
-        for c_idx in range(1, 6):
-            cell = ws1.cell(row=curr_row_1, column=c_idx)
-            cell.border = thin_border
-            if c_idx == 5:
-                cell.number_format = "₹#,##0.00"
-                cell.alignment = Alignment(horizontal="right")
-            else:
-                cell.alignment = Alignment(horizontal="center")
-        curr_row_1 += 1
-
-    ws1.merge_cells(start_row=curr_row_1, start_column=1, end_row=curr_row_1, end_column=4)
-    ws1.cell(row=curr_row_1, column=1, value="மொத்த வரவு (Grand Total)").font = bold_font
-    ws1.cell(row=curr_row_1, column=1).alignment = Alignment(horizontal="right")
-
-    tot_1 = ws1.cell(row=curr_row_1, column=5, value=float(grand_total))
-    tot_1.font = bold_font
-    tot_1.number_format = "₹#,##0.00"
-    tot_1.alignment = Alignment(horizontal="right")
-
-    for col_num in range(1, 6):
-        c = ws1.cell(row=curr_row_1, column=col_num)
-        c.fill = total_fill
-        c.border = thin_border
-
-    ws1.column_dimensions["A"].width = 16
-    ws1.column_dimensions["B"].width = 25
-    ws1.column_dimensions["C"].width = 20
-    ws1.column_dimensions["D"].width = 18
-    ws1.column_dimensions["E"].width = 22
-
-    # Sheet 2: Yearly Breakdown
-    ws2 = wb.create_sheet(title="ஆண்டு வாரிய விவரம்")
-
-    ws2.merge_cells("A1:F1")
-    ws2["A1"] = "ஆண்டு வாரியாக நிதியாளர்களின் வரவு அறிக்கை"
-    ws2["A1"].font = title_font
-    ws2["A1"].alignment = Alignment(horizontal="center")
-
-    headers2 = ["ஆண்டு", "நிதியாளர் ID", "பெயர்", "ஊர்", "வரவு வகை", "மொத்தத் தொகை (₹)"]
-    ws2.append([])
-    ws2.append(headers2)
-
-    for col_num in range(1, 7):
-        c = ws2.cell(row=3, column=col_num)
-        c.font = header_font
-        c.fill = header_fill
-        c.alignment = Alignment(horizontal="center")
-
-    curr_row_2 = 4
-    for row in df_yearly.itertuples(index=False):
-        row_list = list(row)
-        row_list[5] = float(row_list[5]) if row_list[5] else 0.0
-        ws2.append(row_list)
-
-        for c_idx in range(1, 7):
-            cell = ws2.cell(row=curr_row_2, column=c_idx)
-            cell.border = thin_border
-            if c_idx == 6:
-                cell.number_format = "₹#,##0.00"
-                cell.alignment = Alignment(horizontal="right")
-            else:
-                cell.alignment = Alignment(horizontal="center")
-        curr_row_2 += 1
-
-    ws2.merge_cells(start_row=curr_row_2, start_column=1, end_row=curr_row_2, end_column=5)
-    ws2.cell(row=curr_row_2, column=1, value="மொத்த வரவு (Grand Total)").font = bold_font
-    ws2.cell(row=curr_row_2, column=1).alignment = Alignment(horizontal="right")
-
-    tot_2 = ws2.cell(row=curr_row_2, column=6, value=float(grand_total))
-    tot_2.font = bold_font
-    tot_2.number_format = "₹#,##0.00"
-    tot_2.alignment = Alignment(horizontal="right")
-
-    for col_num in range(1, 7):
-        c = ws2.cell(row=curr_row_2, column=col_num)
-        c.fill = total_fill
-        c.border = thin_border
-
-    ws2.column_dimensions["A"].width = 12
-    ws2.column_dimensions["B"].width = 16
-    ws2.column_dimensions["C"].width = 25
-    ws2.column_dimensions["D"].width = 20
-    ws2.column_dimensions["E"].width = 30
-    ws2.column_dimensions["F"].width = 22
+        curr_row += 1
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -698,23 +435,18 @@ def generate_all_donors_excel_report(df_master, df_yearly, grand_total):
 
 
 # ---------------------------------------------------------
-# AUTHENTICATION (LOGIN & SIGN UP)
+# AUTHENTICATION
 # ---------------------------------------------------------
 def login():
     st.title("🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை")
-
-    login_tab, signup_tab = st.tabs(
-        ["🔓 உள்நுழைக (Login)", "📝 புதிய கணக்கு உருவாக்க (Sign Up)"]
-    )
+    login_tab, signup_tab = st.tabs(["🔓 உள்நுழைக (Login)", "📝 புதிய கணக்கு உருவாக்க (Sign Up)"])
 
     with login_tab:
         st.subheader("கணக்கு மேலாண்மை - உள்நுழைவு")
         with st.form("login_form"):
             username = st.text_input("பயனர் பெயர் (Username)")
             password = st.text_input("கடவுச்சொல் (Password)", type="password")
-            submit = st.form_submit_button(
-                "🔓 உள்நுழைக (Login)", type="primary"
-            )
+            submit = st.form_submit_button("🔓 உள்நுழைக (Login)", type="primary")
 
             if submit:
                 if not username or not password:
@@ -723,8 +455,7 @@ def login():
                     with get_db_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute(
-                            "SELECT * FROM users WHERE username = ? AND"
-                            " password = ?",
+                            "SELECT * FROM users WHERE username = ? AND password = ?",
                             (username, password),
                         )
                         user = cursor.fetchone()
@@ -742,15 +473,9 @@ def login():
         st.subheader("புதிய பயனர் கணக்கு உருவாக்க")
         with st.form("signup_form", clear_on_submit=True):
             new_username = st.text_input("புதிய பயனர் பெயர் (New Username)")
-            new_password = st.text_input(
-                "புதிய கடவுச்சொல் (New Password)", type="password"
-            )
-            confirm_password = st.text_input(
-                "கடவுச்சொல்லை உறுதிசெய்க (Confirm Password)", type="password"
-            )
-            signup_submit = st.form_submit_button(
-                "📝 கணக்கு உருவாக்கு (Create Account)", type="primary"
-            )
+            new_password = st.text_input("புதிய கடவுச்சொல் (New Password)", type="password")
+            confirm_password = st.text_input("கடவுச்சொல்லை உறுதிசெய்க (Confirm Password)", type="password")
+            signup_submit = st.form_submit_button("📝 கணக்கு உருவாக்கு (Create Account)", type="primary")
 
             if signup_submit:
                 if not new_username or not new_password:
@@ -760,25 +485,16 @@ def login():
                 else:
                     with get_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute(
-                            "SELECT * FROM users WHERE username = ?",
-                            (new_username,),
-                        )
-                        existing_user = cursor.fetchone()
-
-                        if existing_user:
+                        cursor.execute("SELECT * FROM users WHERE username = ?", (new_username,))
+                        if cursor.fetchone():
                             st.error("❌ இந்த பயனர் பெயர் ஏற்கனவே உள்ளது!")
                         else:
                             cursor.execute(
-                                "INSERT INTO users (username, password) VALUES"
-                                " (?, ?)",
+                                "INSERT INTO users (username, password) VALUES (?, ?)",
                                 (new_username, new_password),
                             )
                             conn.commit()
-                            st.success(
-                                "✅ புதிய கணக்கு உருவாக்கப்பட்டது! Login Tab-ல்"
-                                " உள்நுழையலாம்."
-                            )
+                            st.success("✅ புதிய கணக்கு உருவாக்கப்பட்டது! Login Tab-ல் உள்நுழையலாம்.")
 
 
 # ---------------------------------------------------------
@@ -794,10 +510,7 @@ else:
         st.query_params.clear()
         st.rerun()
 
-    st.title(
-        "🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ"
-        " மண்டகப்படி"
-    )
+    st.title("🛕 அருள்மிகு பெத்தையா காடேரி அம்பிகை மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ மண்டகப்படி")
 
     tab1, tab2, tab3, tab4 = st.tabs(
         [
@@ -878,15 +591,11 @@ else:
                     "தொகை (₹)", min_value=0.0, step=100.0, format="%.2f"
                 )
 
-            submit_rec = st.form_submit_button(
-                "💾 சேமி (Save Receipt)", type="primary"
-            )
+            submit_rec = st.form_submit_button("💾 சேமி (Save Receipt)", type="primary")
 
             if submit_rec:
                 if not name or amount <= 0:
-                    st.warning(
-                        "⚠️ தயவுசெய்து பெயர் மற்றும் சரியான தொகையை நிரப்பவும்!"
-                    )
+                    st.warning("⚠️ தயவுசெய்து பெயர் மற்றும் சரியான தொகையை நிரப்பவும்!")
                 else:
                     formatted_date = receipt_date.strftime("%d-%m-%Y")
                     rec_year = receipt_date.year
@@ -952,25 +661,14 @@ else:
                 )
                 st.session_state["active_receipt"] = cursor.fetchone()
 
-        if (
-                "active_receipt" in st.session_state
-                and st.session_state["active_receipt"]
-        ):
+        if "active_receipt" in st.session_state and st.session_state["active_receipt"]:
             data = st.session_state["active_receipt"]
-
             col_p1, col_p2 = st.columns(2)
 
             with col_p1:
                 st.markdown("### 📄 A4 Standard PDF")
                 pdf_bytes = generate_receipt_pdf(
-                    data[2],
-                    data[3],
-                    data[4],
-                    data[5],
-                    data[0],
-                    data[1],
-                    data[6],
-                    data[7],
+                    data[2], data[3], data[4], data[5], data[0], data[1], data[6], data[7],
                     donor_id=data[8] if len(data) > 8 else "-"
                 )
                 st.download_button(
@@ -988,7 +686,6 @@ else:
     # TAB 2: EXPENSE
     with tab2:
         st.header("📤 புதிய செலவு பதிவு")
-
         with st.form("expense_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -1019,9 +716,7 @@ else:
                 )
                 exp_remarks = st.text_input("குறிப்பு (Remarks)")
 
-            submit_exp = st.form_submit_button(
-                "💾 செலவைச் சேமி (Save Expense)", type="primary"
-            )
+            submit_exp = st.form_submit_button("💾 செலவைச் சேமி (Save Expense)", type="primary")
 
             if submit_exp:
                 if not exp_title or exp_amount <= 0:
@@ -1049,314 +744,189 @@ else:
         st.header("📊 கணக்கு அறிக்கைகள்")
 
         rep_tab1, rep_tab2 = st.tabs(
-            ["📋 பொது அறிக்கைகள் (General Reports)", "👤 ஆண்டு வாரியாக நிதியாளர் வரவு (Donor Yearly Report)"])
+            [
+                "📑 ஒருங்கிணைந்த வரவு-செலவு அறிக்கை (Combined Income & Expense)",
+                "👥 வரவு வகை வாரியான ஆண்டு அறிக்கை (Yearly Matrix Reports)"
+            ]
+        )
 
+        # -----------------------------------------------------------------
+        # 1. COMBINED INCOME & EXPENSE REPORT (வரவு-செலவு இணைந்து வருதல்)
+        # -----------------------------------------------------------------
         with rep_tab1:
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                view_type = st.radio(
-                    "அறிக்கை வகை:",
-                    ["📥 வரவு பட்டியல் (Income)", "📤 செலவு பட்டியல் (Expense)"],
-                    horizontal=True,
-                )
+            st.subheader("📑 வரவு மற்றும் செலவு இணைந்த அறிக்கை (Combined Report)")
 
-            # Year List Extraction from DB
+            # ஆண்டைக் கண்டறிதல்
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                if "வரவு" in view_type:
-                    cursor.execute("SELECT DISTINCT year FROM receipts WHERE year IS NOT NULL ORDER BY year DESC")
-                else:
-                    cursor.execute(
-                        "SELECT DISTINCT SUBSTR(date, 7, 4) FROM expenses WHERE date IS NOT NULL ORDER BY SUBSTR(date, 7, 4) DESC")
-                db_years = [str(r[0]) for r in cursor.fetchall() if r[0]]
+                cursor.execute("SELECT DISTINCT year FROM receipts WHERE year IS NOT NULL ORDER BY year DESC")
+                years_r = [str(r[0]) for r in cursor.fetchall() if r[0]]
+                cursor.execute("SELECT DISTINCT SUBSTR(date, 7, 4) FROM expenses WHERE date IS NOT NULL ORDER BY SUBSTR(date, 7, 4) DESC")
+                years_e = [str(r[0]) for r in cursor.fetchall() if r[0]]
 
-            available_years = ["அனைத்து ஆண்டுகளும் (All Years)"] + db_years
+            all_years_set = sorted(list(set(years_r + years_e)), reverse=True)
+            avail_years = ["அனைத்து ஆண்டுகளும் (All Years)"] + all_years_set
 
-            with col_f2:
-                selected_year = st.selectbox("📅 ஆண்டு வடிகட்டி (Year Filter):", available_years)
-
-            with col_f3:
-                cat_filter = st.selectbox(
-                    "வகை வடிகட்டி (Category Filter):",
-                    [
-                        "அனைத்தும் (All)",
-                        "நிரந்தர வைப்பு நிதியாளர்கள் வரவுகள்",
-                        "காணிக்கையாளர்கள் வரவுகள்",
-                        "சிறப்பு வைப்பு நிதியாளர்கள் வரவுகள்",
-                        "சிறப்பு காணிக்கையாளர்கள் வரவுகள்",
-                        "திருவிளக்கு பூஜை வரவுகள்",
-                        "மின்சாரக் கட்டணம் (EB Bill)",
-                        "பூஜைப் பொருட்கள்",
-                        "அன்னதானம்",
-                        "வேலை ஆள் கூலி",
-                        "பராமரிப்புச் செலவு",
-                        "இதர செலவுகள்",
-                    ],
-                )
+            col_y1, col_y2 = st.columns(2)
+            with col_y1:
+                selected_year = st.selectbox("📅 ஆண்டு வடிகட்டி (Year Filter):", avail_years, key="comb_year")
+            with col_y2:
+                type_filter = st.selectbox("வகை வடிகட்டி (Type Filter):", ["அனைத்தும் (All)", "வரவு (Income)", "செலவு (Expense)"])
 
             with get_db_connection() as conn:
                 cursor = conn.cursor()
 
-                conditions = []
-                params = []
+                # வரவுகளை எடுத்தல்
+                rec_query = "SELECT receipt_no, date, year, category, name, amount FROM receipts"
+                rec_params = []
+                if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
+                    rec_query += " WHERE year = ?"
+                    rec_params.append(int(selected_year))
 
-                if "வரவு" in view_type:
-                    query = (
-                        "SELECT receipt_no, date, category, name, amount, phone,"
-                        " payment_method, donor_id FROM receipts"
-                    )
-                    if cat_filter != "அனைத்தும் (All)":
-                        conditions.append("category = ?")
-                        params.append(cat_filter)
-                    if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
-                        conditions.append("year = ?")
-                        params.append(int(selected_year))
+                cursor.execute(rec_query, rec_params)
+                rec_rows = cursor.fetchall()
 
-                    if conditions:
-                        query += " WHERE " + " AND ".join(conditions)
-                    query += " ORDER BY receipt_no ASC"
-                else:
-                    query = (
-                        "SELECT expense_id, date, category, title, amount, remarks"
-                        " FROM expenses"
-                    )
-                    if cat_filter != "அனைத்தும் (All)":
-                        conditions.append("category = ?")
-                        params.append(cat_filter)
-                    if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
-                        conditions.append("SUBSTR(date, 7, 4) = ?")
-                        params.append(selected_year)
+                # செலவுகளை எடுத்தல்
+                exp_query = "SELECT expense_id, date, SUBSTR(date, 7, 4), category, title, amount FROM expenses"
+                exp_params = []
+                if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
+                    exp_query += " WHERE SUBSTR(date, 7, 4) = ?"
+                    exp_params.append(selected_year)
 
-                    if conditions:
-                        query += " WHERE " + " AND ".join(conditions)
-                    query += " ORDER BY expense_id ASC"
+                cursor.execute(exp_query, exp_params)
+                exp_rows = cursor.fetchall()
 
-                cursor.execute(query, params)
-                rows = cursor.fetchall()
+            combined_list = []
+            for r in rec_rows:
+                if type_filter in ["அனைத்தும் (All)", "வரவு (Income)"]:
+                    combined_list.append({
+                        "ID / எண்": f"REC-{r[0]}",
+                        "தேதி": r[1],
+                        "ஆண்டு": r[2],
+                        "பதிவு வகை": "வரவு (Income)",
+                        "பிரிவு / Category": r[3],
+                        "விவரம் / பெயர்": r[4],
+                        "வரவுத் தொகை (₹)": float(r[5]),
+                        "செலவுத் தொகை (₹)": 0.0
+                    })
 
-                cursor.execute("SELECT SUM(amount) FROM receipts")
-                tot_v = cursor.fetchone()[0] or 0.0
-                cursor.execute("SELECT SUM(amount) FROM expenses")
-                tot_s = cursor.fetchone()[0] or 0.0
+            for e in exp_rows:
+                if type_filter in ["அனைத்தும் (All)", "செலவு (Expense)"]:
+                    combined_list.append({
+                        "ID / எண்": f"EXP-{e[0]}",
+                        "தேதி": e[1],
+                        "ஆண்டு": e[2],
+                        "பதிவு வகை": "செலவு (Expense)",
+                        "பிரிவு / Category": e[3],
+                        "விவரம் / பெயர்": e[4],
+                        "வரவுத் தொகை (₹)": 0.0,
+                        "செலவுத் தொகை (₹)": float(e[5])
+                    })
 
-            filtered_tot = sum(r[4] for r in rows) if rows else 0.0
+            if combined_list:
+                df_comb = pd.DataFrame(combined_list)
 
-            col_m1, col_m2 = st.columns(2)
-            with col_m1:
-                st.metric(
-                    label="தேர்ந்தெடுக்கப்பட்ட வடிகட்டி தொகை (Filtered Total)",
-                    value=f"₹{filtered_tot:,.2f}",
-                )
-            with col_m2:
-                st.metric(
-                    label="மொத்தக் கையிருப்பு (Overall Balance)",
-                    value=f"₹{(tot_v - tot_s):,.2f}",
-                )
+                # மொத்தக் கணக்கீடு
+                tot_inc = df_comb["வரவுத் தொகை (₹)"].sum()
+                tot_exp = df_comb["செலவுத் தொகை (₹)"].sum()
+                net_bal = tot_inc - tot_exp
 
-            st.divider()
+                m1, m2, m3 = st.columns(3)
+                m1.metric("📥 மொத்த வரவு (Total Income)", f"₹{tot_inc:,.2f}")
+                m2.metric("📤 மொத்த செலவு (Total Expense)", f"₹{tot_exp:,.2f}")
+                m3.metric("💰 நிகர கையிருப்பு (Net Balance)", f"₹{net_bal:,.2f}")
 
-            # DELETE SECTION
-            with st.expander("🗑️ பதிவை நீக்க (Delete Entry)"):
-                st.warning(
-                    "⚠️ கவனிக்க: நீக்கப்பட்ட பதிவு டேட்டாபேஸிலிருந்து நிரந்தரமாக"
-                    " அழிக்கப்படும்!"
-                )
-                delete_id = st.number_input(
-                    "நீக்க வேண்டிய எண் (ID / Receipt No) உள்ளிடவும்:",
-                    min_value=1,
-                    step=1,
-                )
+                st.divider()
+                st.dataframe(df_comb, use_container_width=True)
 
-                if st.button("❌ பதிவை நீக்கு (Confirm Delete)", type="primary"):
-                    with get_db_connection() as conn:
-                        cursor = conn.cursor()
-                        if "வரவு" in view_type:
-                            cursor.execute(
-                                "DELETE FROM receipts WHERE receipt_no = ?",
-                                (delete_id,),
-                            )
-                        else:
-                            cursor.execute(
-                                "DELETE FROM expenses WHERE expense_id = ?",
-                                (delete_id,),
-                            )
-                        deleted_count = cursor.rowcount
-                        conn.commit()
-
-                    if deleted_count > 0:
-                        st.success(
-                            f"✅ எண் {delete_id} பதிவு வெற்றிகரமாக நீக்கப்பட்டது!"
-                        )
-                        st.rerun()
-                    else:
-                        st.error(f"❌ எண் {delete_id} காணப்படவில்லை!")
-
-            st.divider()
-
-            # DATA TABLE DISPLAY
-            if rows:
-                id_col_name = "ரசீது எண்" if "வரவு" in view_type else "செலவு எண்"
-                display_data = []
-
-                for idx, r in enumerate(rows, start=1):
-                    p_val = r[5] if len(r) > 5 and r[5] else "-"
-                    p_method = (
-                        r[6]
-                        if len(r) > 6 and r[6]
-                        else ("-" if "செலவு" in view_type else "Cash (பணம்)")
-                    )
-
-                    if "வரவு" in view_type:
-                        d_id_val = r[7] if len(r) > 7 and r[7] else "-"
-                        display_data.append(
-                            [idx, r[0], d_id_val, r[1], r[2], r[3], p_method, r[4], p_val]
-                        )
-                    else:
-                        display_data.append(
-                            [idx, r[0], r[1], r[2], r[3], "-", r[4], p_val]
-                        )
-
-                if "வரவு" in view_type:
-                    columns = [
-                        "வ.எண் (S.No)",
-                        id_col_name,
-                        "நிதியாளர் ID",
-                        "தேதி",
-                        "வகை",
-                        "பெயர் / விவரம்",
-                        "செலுத்திய முறை",
-                        "தொகை (₹)",
-                        "கைபேசி",
-                    ]
-                else:
-                    columns = [
-                        "வ.எண் (S.No)",
-                        id_col_name,
-                        "தேதி",
-                        "வகை",
-                        "பெயர் / விவரம்",
-                        "செலுத்திய முறை",
-                        "தொகை (₹)",
-                        "குறிப்பு",
-                    ]
-
-                df = pd.DataFrame(display_data, columns=columns)
-                st.dataframe(df, use_container_width=True)
-
-                excel_data = generate_excel_report(
-                    rows, view_type, cat_filter, selected_year, filtered_tot
-                )
+                # Excel Download Button
+                comb_excel = generate_combined_excel_report(df_comb, tot_inc, tot_exp, net_bal)
                 st.download_button(
-                    label="📊 Excel அறிக்கையாகப் பதிவிறக்கு",
-                    data=excel_data,
-                    file_name=f"Kovil_Report_{selected_year}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                )
-            else:
-                st.info("தகவல்கள் எதுவும் இல்லை (No records found).")
-
-        # DONOR YEARLY REPORT TAB
-        with rep_tab2:
-            st.subheader("👤 நிதியாளர்களின் ஆண்டு வாரியான வரவு அறிக்கை")
-
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT donor_id, name, city FROM donors ORDER BY donor_id ASC")
-                donors_list = cursor.fetchall()
-
-                cursor.execute("""
-                    SELECT d.donor_id, d.name, d.city, d.phone, COALESCE(SUM(r.amount), 0) as total_amt
-                    FROM donors d
-                    LEFT JOIN receipts r ON d.donor_id = r.donor_id
-                    GROUP BY d.donor_id
-                    ORDER BY d.donor_id ASC
-                """)
-                all_donors_master = cursor.fetchall()
-
-                cursor.execute("""
-                    SELECT r.year, d.donor_id, d.name, d.city, r.category, SUM(r.amount) as total_amt
-                    FROM receipts r
-                    JOIN donors d ON r.donor_id = d.donor_id
-                    GROUP BY r.year, d.donor_id, r.category
-                    ORDER BY r.year DESC, d.donor_id ASC
-                """)
-                all_donors_yearly = cursor.fetchall()
-
-            if all_donors_master:
-                df_all_master = pd.DataFrame(all_donors_master,
-                                             columns=["நிதியாளர் ID", "பெயர்", "ஊர்", "கைபேசி எண்", "மொத்த வரவு (₹)"])
-                df_all_yearly = pd.DataFrame(all_donors_yearly,
-                                             columns=["ஆண்டு", "நிதியாளர் ID", "பெயர்", "ஊர்", "வரவு வகை", "தொகை (₹)"])
-                all_grand_total = df_all_master["மொத்த வரவு (₹)"].sum()
-
-                all_donors_excel = generate_all_donors_excel_report(df_all_master, df_all_yearly, all_grand_total)
-                st.download_button(
-                    label="📊 அனைத்து நிதியாளர்களின் மொத்த Excel அறிக்கையைப் பதிவிறக்கு (All Donors Report)",
-                    data=all_donors_excel,
-                    file_name=f"All_Donors_Yearly_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    label="📊 ஒருங்கிணைந்த Excel அறிக்கையைப் பதிவிறக்கு",
+                    data=comb_excel,
+                    file_name=f"Combined_Income_Expense_{datetime.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary"
                 )
-                st.divider()
-
-            if donors_list:
-                donor_options = {f"{d[0]} - {d[1]} ({d[2] if d[2] else ''})": d[0] for d in donors_list}
-                selected_donor_str = st.selectbox("தனிப்பட்ட நிதியாளரைத் தேர்வு செய்க (Unique ID / Name):",
-                                                  list(donor_options.keys()))
-                target_donor_id = donor_options[selected_donor_str]
-
-                if target_donor_id:
-                    with get_db_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT donor_id, name, city, phone FROM donors WHERE donor_id = ?",
-                                       (target_donor_id,))
-                        d_info = cursor.fetchone()
-
-                        cursor.execute("""
-                            SELECT receipt_no, date, year, category, payment_method, amount 
-                            FROM receipts 
-                            WHERE donor_id = ? 
-                            ORDER BY year DESC, receipt_no ASC
-                        """, (target_donor_id,))
-                        donor_receipts = cursor.fetchall()
-
-                    if d_info:
-                        st.markdown(f"""
-                        **தேர்ந்தெடுக்கப்பட்ட நிதியாளர் விவரங்கள்:**
-                        - **Unique Donor ID:** `{d_info[0]}`
-                        - **பெயர்:** {d_info[1]}
-                        - **ஊர்:** {d_info[2] if d_info[2] else '-'}
-                        - **கைபேசி:** {d_info[3] if d_info[3] else '-'}
-                        """)
-
-                    if donor_receipts:
-                        df_donor = pd.DataFrame(donor_receipts,
-                                                columns=["ரசீது எண்", "தேதி", "ஆண்டு (Year)", "வரவு வகை",
-                                                         "செலுத்திய முறை", "தொகை (₹)"])
-
-                        st.markdown("### 📅 செலுத்திய ரசீது விவரங்கள் (Receipt History)")
-                        st.dataframe(df_donor, use_container_width=True)
-
-                        # Yearly Summary
-                        st.markdown("### 📈 ஆண்டு வாரியான கூட்டுத் தொகை (Yearly Summary)")
-                        yearly_summary = df_donor.groupby(["ஆண்டு (Year)", "வரவு வகை"])["தொகை (₹)"].sum().reset_index()
-                        st.dataframe(yearly_summary, use_container_width=True)
-
-                        grand_total = df_donor["தொகை (₹)"].sum()
-                        st.success(f"💰 **இந்த நிதியாளரின் மொத்த வரவுத் தொகை (Grand Total): ₹{grand_total:,.2f}**")
-
-                        # Single Donor Excel Download Button
-                        donor_excel = generate_donor_excel_report(d_info, df_donor, yearly_summary, grand_total)
-                        st.download_button(
-                            label=f"📊 {d_info[1]} - Excel அறிக்கையைப் பதிவிறக்கு",
-                            data=donor_excel,
-                            file_name=f"Donor_Report_{d_info[0]}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                    else:
-                        st.warning("இந்த நிதியாளருக்கு எந்த வரவுப் பதிவும் கிடைக்கவில்லை.")
             else:
-                st.info("நிதியாளர்கள் விவரம் எதுவும் இல்லை.")
+                st.info("பதிவுகள் எதுவும் கிடைக்கவில்லை.")
+
+        # -----------------------------------------------------------------
+        # 2. YEARLY MATRIX REPORTS (2025, 2026 பத்திகளாக வருதல்)
+        # -----------------------------------------------------------------
+        with rep_tab2:
+            st.subheader("👥 வரவு வகைகள் & நிதியாளர்கள் ஆண்டு பத்திகள் (Yearly Matrix Report)")
+
+            with get_db_connection() as conn:
+                df_all_rec = pd.read_sql_query("""
+                    SELECT r.year, r.category, d.donor_id, d.name, d.city, r.amount
+                    FROM receipts r
+                    JOIN donors d ON r.donor_id = d.donor_id
+                """, conn)
+
+            if not df_all_rec.empty():
+                cat_options = ["அனைத்து வரவு வகைகளும் (All Categories)"] + list(df_all_rec["category"].unique())
+                selected_cat = st.selectbox("வரவு வகையைத் தேர்ந்தெடுக்கவும்:", cat_options)
+
+                df_filtered = df_all_rec if selected_cat == "அனைத்து வரவு வகைகளும் (All Categories)" else df_all_rec[df_all_rec["category"] == selected_cat]
+
+                if not df_filtered.empty():
+                    # Pivot Table - 2025, 2026 போன்ற ஆண்டுகளை பத்திகளாக்குதல்
+                    pivot_df = df_filtered.pivot_table(
+                        index=["donor_id", "name", "city"],
+                        columns="year",
+                        values="amount",
+                        aggfunc="sum",
+                        fill_value=0.0
+                    ).reset_index()
+
+                    # ஆண்டு பத்திகளின் பெயர்களை மாற்றுதல்
+                    year_cols = [col for col in pivot_df.columns if isinstance(col, (int, float))]
+                    year_cols_sorted = sorted(year_cols)
+
+                    # Total column கணக்கீடு
+                    pivot_df["மொத்தத் தொகை (Total ₹)"] = pivot_df[year_cols_sorted].sum(axis=1)
+
+                    # Columns renaming
+                    rename_dict = {
+                        "donor_id": "நிதியாளர் ID",
+                        "name": "பெயர்",
+                        "city": "ஊர்"
+                    }
+                    for y in year_cols_sorted:
+                        rename_dict[y] = f"{int(y)} தொகை (₹)"
+
+                    pivot_df.rename(columns=rename_dict, inplace=True)
+
+                    # Grand Total Row தயாரித்தல்
+                    grand_total_row = {
+                        "நிதியாளர் ID": "மொத்தம் (Grand Total)",
+                        "பெயர்": "-",
+                        "ஊர்": "-"
+                    }
+
+                    for y in year_cols_sorted:
+                        grand_total_row[f"{int(y)} தொகை (₹)"] = pivot_df[f"{int(y)} தொகை (₹)"].sum()
+
+                    grand_total_row["மொத்தத் தொகை (Total ₹)"] = pivot_df["மொத்தத் தொகை (Total ₹)"].sum()
+
+                    df_final_display = pd.concat([pivot_df, pd.DataFrame([grand_total_row])], ignore_index=True)
+
+                    st.markdown(f"### 📋 {selected_cat} - மேட்ரிக்ஸ் அட்டவணை")
+                    st.dataframe(df_final_display, use_container_width=True)
+
+                    matrix_excel = generate_yearly_matrix_excel(df_final_display, selected_cat)
+                    st.download_button(
+                        label=f"📊 {selected_cat} - Excel அறிக்கையைப் பதிவிறக்கு",
+                        data=matrix_excel,
+                        file_name=f"Yearly_Matrix_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
+                else:
+                    st.info("தேர்ந்தெடுக்கப்பட்ட வகைக்குத் தரவு எதுவும் இல்லை.")
+            else:
+                st.info("வரவுப் பதிவுகள் எதுவும் இதுவரை இல்லை.")
 
     # TAB 4: EDIT ENTRY
     with tab4:
@@ -1380,8 +950,7 @@ else:
                 if "வரவு" in edit_type:
                     cursor.execute(
                         "SELECT receipt_no, date, category, name, city, amount,"
-                        " phone, payment_method, donor_id FROM receipts WHERE receipt_no"
-                        " = ?",
+                        " phone, payment_method, donor_id FROM receipts WHERE receipt_no = ?",
                         (edit_id,),
                     )
                 else:
@@ -1420,9 +989,7 @@ else:
                     e_cat = st.selectbox(
                         "வரவு வகை:",
                         cat_list,
-                        index=cat_list.index(data[2])
-                        if data[2] in cat_list
-                        else 0,
+                        index=cat_list.index(data[2]) if data[2] in cat_list else 0,
                     )
                     e_name = st.text_input("பெயர்:", value=data[3])
                     e_city = st.text_input("ஊர்:", value=data[4])
@@ -1437,15 +1004,11 @@ else:
                         "Bank Transfer (வங்கி மாற்றம்)",
                         "Money order (மணி ஆர்டர் )",
                     ]
-                    cur_method = (
-                        data[7] if len(data) > 7 and data[7] else "Cash (பணம்)"
-                    )
+                    cur_method = data[7] if len(data) > 7 and data[7] else "Cash (பணம்)"
                     e_method = st.selectbox(
                         "செலுத்திய முறை:",
                         pay_methods,
-                        index=pay_methods.index(cur_method)
-                        if cur_method in pay_methods
-                        else 0,
+                        index=pay_methods.index(cur_method) if cur_method in pay_methods else 0,
                     )
                 else:
                     cat_list = [
@@ -1459,9 +1022,7 @@ else:
                     e_cat = st.selectbox(
                         "செலவு வகை:",
                         cat_list,
-                        index=cat_list.index(data[2])
-                        if data[2] in cat_list
-                        else 0,
+                        index=cat_list.index(data[2]) if data[2] in cat_list else 0,
                     )
                     e_title = st.text_input("விவரம்:", value=data[3])
                     e_amt = st.number_input(
@@ -1469,9 +1030,7 @@ else:
                     )
                     e_remarks = st.text_input("குறிப்பு:", value=data[5] or "")
 
-                update_btn = st.form_submit_button(
-                    "🔄 மாற்றங்களை சேமி (Update)", type="primary"
-                )
+                update_btn = st.form_submit_button("🔄 மாற்றங்களை சேமி (Update)", type="primary")
 
                 if update_btn:
                     formatted_u_date = e_date.strftime("%d-%m-%Y")
