@@ -298,7 +298,6 @@ def generate_receipt_pdf(
 
 
 def generate_combined_excel_report(df_combined, total_income, total_expense, net_balance):
-    """வரவும் செலவும் இணைந்த Excel அறிக்கை"""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "வரவு செலவு அறிக்கை"
@@ -307,7 +306,6 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     bold_font = Font(name="Calibri", size=11, bold=True)
     header_fill = PatternFill(start_color="4A0E17", end_color="4A0E17", fill_type="solid")
-    total_fill = PatternFill(start_color="EAEAEA", end_color="EAEAEA", fill_type="solid")
     thin_border = Border(
         left=Side(style="thin", color="D3D3D3"), right=Side(style="thin", color="D3D3D3"),
         top=Side(style="thin", color="D3D3D3"), bottom=Side(style="thin", color="D3D3D3")
@@ -334,21 +332,19 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
         for col_num in range(1, len(headers) + 1):
             cell = ws.cell(row=current_row, column=col_num)
             cell.border = thin_border
-            if col_num in [7, 8]:  # வரவு/செலவு தொகைகள்
+            if col_num in [7, 8]:
                 cell.number_format = "₹#,##0.00"
                 cell.alignment = Alignment(horizontal="right")
             else:
                 cell.alignment = Alignment(horizontal="center")
         current_row += 1
 
-    # மொத்த வரவு
     ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
     ws.cell(row=current_row, column=1, value="மொத்த வரவு (Total Income)").font = bold_font
     ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="right")
     ws.cell(row=current_row, column=7, value=float(total_income)).font = bold_font
     ws.cell(row=current_row, column=7).number_format = "₹#,##0.00"
 
-    # மொத்த செலவு
     current_row += 1
     ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
     ws.cell(row=current_row, column=1, value="மொத்த செலவு (Total Expense)").font = bold_font
@@ -356,7 +352,6 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
     ws.cell(row=current_row, column=8, value=float(total_expense)).font = bold_font
     ws.cell(row=current_row, column=8).number_format = "₹#,##0.00"
 
-    # நிகரக் கையிருப்பு
     current_row += 1
     ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
     ws.cell(row=current_row, column=1, value="நிகரக் கையிருப்பு (Net Balance)").font = bold_font
@@ -371,7 +366,6 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
 
 
 def generate_yearly_matrix_excel(df_matrix, title_name):
-    """ஆண்டு பத்திகளாக (Columns) கொண்ட Matrix வடிவ Excel அறிக்கை"""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "ஆண்டு வாரிய மேட்ரிக்ஸ்"
@@ -415,7 +409,6 @@ def generate_yearly_matrix_excel(df_matrix, title_name):
                 cell.font = bold_font
                 cell.fill = total_fill
 
-            # தொகைகளுக்கான பத்திகள் (ஆண்டுகள் மற்றும் Total)
             if c_idx > 3 or (is_last_row and c_idx >= 4):
                 try:
                     val = float(cell.value)
@@ -517,7 +510,7 @@ else:
             "📥 புதிய வரவு (Receipt)",
             "📤 புதிய செலவு (Expense)",
             "📊 அறிக்கைகள் (Reports)",
-            "✏️ பதிவைத் திருத்த (Edit Entry)",
+            "✏️ பதிவைத் திருத்த / நீக்க (Edit / Delete Entry)",
         ]
     )
 
@@ -750,9 +743,6 @@ else:
             ]
         )
 
-        # -----------------------------------------------------------------
-        # 1. COMBINED INCOME & EXPENSE REPORT (வரவு-செலவு இணைந்து வருதல்)
-        # -----------------------------------------------------------------
         with rep_tab1:
             st.subheader("📑 வரவு மற்றும் செலவு இணைந்த அறிக்கை (Combined Report)")
 
@@ -846,9 +836,6 @@ else:
             else:
                 st.info("பதிவுகள் எதுவும் கிடைக்கவில்லை.")
 
-        # -----------------------------------------------------------------
-        # 2. YEARLY MATRIX REPORTS (2025, 2026 பத்திகளாக வருதல்)
-        # -----------------------------------------------------------------
         with rep_tab2:
             st.subheader("👥 வரவு வகைகள் & நிதியாளர்கள் ஆண்டு பத்திகள் (Yearly Matrix Report)")
 
@@ -927,18 +914,18 @@ else:
             else:
                 st.info("வரவுப் பதிவுகள் எதுவும் இதுவரை இல்லை.")
 
-    # TAB 4: EDIT ENTRY
+    # TAB 4: EDIT & DELETE ENTRY
     with tab4:
-        st.header("✏️ பதிவை மீண்டும் திருத்துதல் (Edit Entry)")
+        st.header("✏️ பதிவைத் திருத்துதல் / 🗑️ பதிவை நீக்குதல்")
 
         edit_type = st.radio(
-            "எதை திருத்த வேண்டும்?:",
+            "எதை திருத்த/நீக்க வேண்டும்?:",
             ["📥 வரவு (Receipt)", "📤 செலவு (Expense)"],
             horizontal=True,
         )
 
         edit_id = st.number_input(
-            "திருத்த வேண்டிய எண் (Receipt No / Expense ID):",
+            "தேவையான எண் (Receipt No / Expense ID):",
             min_value=1,
             step=1,
         )
@@ -1069,4 +1056,24 @@ else:
                             )
                         conn.commit()
                     st.success("✅ தகவல்கள் வெற்றிகரமாக புதுப்பிக்கப்பட்டன!")
+                    st.session_state.pop("edit_data", None)
                     st.rerun()
+
+            st.divider()
+            st.subheader("🗑️ பதிவை நீக்கு (Delete Record)")
+            
+            confirm_del = st.checkbox("⚠️ இந்த பதிவை நிரந்தரமாக நீக்க விரும்புகிறேன்.")
+            if st.button("🗑️ பதிவை நீக்கு (Delete)", type="secondary"):
+                if confirm_del:
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        if "வரவு" in edit_type:
+                            cursor.execute("DELETE FROM receipts WHERE receipt_no = ?", (data[0],))
+                        else:
+                            cursor.execute("DELETE FROM expenses WHERE expense_id = ?", (data[0],))
+                        conn.commit()
+                    st.success(f"🗑️ எண் {data[0]} வெற்றிகரமாக நீக்கப்பட்டது!")
+                    st.session_state.pop("edit_data", None)
+                    st.rerun()
+                else:
+                    st.warning("⚠️ பதிவை நீக்க மேலே உள்ள உறுதிப்படுத்தல் பெட்டியை (Checkbox) தேர்வு செய்யவும்!")
