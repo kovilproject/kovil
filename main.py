@@ -248,7 +248,7 @@ def get_pdf_font():
 
 
 def generate_receipt_pdf(
-        title, name, city, amount, receipt_no, date_str, phone, pay_method, donor_id="-"
+    title, name, city, amount, receipt_no, date_str, phone, pay_method, donor_id="-"
 ):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -311,8 +311,8 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
         top=Side(style="thin", color="D3D3D3"), bottom=Side(style="thin", color="D3D3D3")
     )
 
-    ws.merge_cells("A1:H1")
-    ws["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை - 통합 வரவு செலவு அறிக்கை"
+    ws.merge_cells(f"A1:{openpyxl.utils.get_column_letter(len(df_combined.columns))}1")
+    ws["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை - ஒருங்கிணைந்த வரவு செலவு அறிக்கை"
     ws["A1"].font = title_font
     ws["A1"].alignment = Alignment(horizontal="center")
 
@@ -332,32 +332,33 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
         for col_num in range(1, len(headers) + 1):
             cell = ws.cell(row=current_row, column=col_num)
             cell.border = thin_border
-            if col_num in [7, 8]:
+            if col_num in [len(headers) - 1, len(headers)]:
                 cell.number_format = "₹#,##0.00"
                 cell.alignment = Alignment(horizontal="right")
             else:
                 cell.alignment = Alignment(horizontal="center")
         current_row += 1
 
-    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
+    offset = len(headers) - 2
+    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=offset)
     ws.cell(row=current_row, column=1, value="மொத்த வரவு (Total Income)").font = bold_font
     ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="right")
-    ws.cell(row=current_row, column=7, value=float(total_income)).font = bold_font
-    ws.cell(row=current_row, column=7).number_format = "₹#,##0.00"
+    ws.cell(row=current_row, column=offset + 1, value=float(total_income)).font = bold_font
+    ws.cell(row=current_row, column=offset + 1).number_format = "₹#,##0.00"
 
     current_row += 1
-    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
+    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=offset)
     ws.cell(row=current_row, column=1, value="மொத்த செலவு (Total Expense)").font = bold_font
     ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="right")
-    ws.cell(row=current_row, column=8, value=float(total_expense)).font = bold_font
-    ws.cell(row=current_row, column=8).number_format = "₹#,##0.00"
+    ws.cell(row=current_row, column=offset + 2, value=float(total_expense)).font = bold_font
+    ws.cell(row=current_row, column=offset + 2).number_format = "₹#,##0.00"
 
     current_row += 1
-    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=6)
+    ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=offset)
     ws.cell(row=current_row, column=1, value="நிகரக் கையிருப்பு (Net Balance)").font = bold_font
     ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="right")
-    ws.cell(row=current_row, column=7, value=float(net_balance)).font = bold_font
-    ws.cell(row=current_row, column=7).number_format = "₹#,##0.00"
+    ws.cell(row=current_row, column=offset + 1, value=float(net_balance)).font = bold_font
+    ws.cell(row=current_row, column=offset + 1).number_format = "₹#,##0.00"
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -744,7 +745,7 @@ else:
         )
 
         with rep_tab1:
-            st.subheader("📑 வரவு மற்றும் செலவு இணைந்த அறிக்கை (Combined Report)")
+            st.subheader("📑 வரவு (வகை வாரியாக) மற்றும் செலவு இணைந்த அறிக்கை")
 
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -765,16 +766,19 @@ else:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
 
-                rec_query = "SELECT receipt_no, date, year, category, name, amount FROM receipts"
+                # 1. வரவுகளை வகை வாரியாக (Category-wise) குரூப் செய்து மொத்தத் தொகை மட்டும் எடுத்தல்
+                rec_query = "SELECT category, SUM(amount) FROM receipts"
                 rec_params = []
                 if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
                     rec_query += " WHERE year = ?"
                     rec_params.append(int(selected_year))
+                rec_query += " GROUP BY category"
 
                 cursor.execute(rec_query, rec_params)
-                rec_rows = cursor.fetchall()
+                rec_summary_rows = cursor.fetchall()
 
-                exp_query = "SELECT expense_id, date, SUBSTR(date, 7, 4), category, title, amount FROM expenses"
+                # 2. செலவுகளை தனித்தனியாக விவரத்துடன் எடுத்தல்
+                exp_query = "SELECT expense_id, date, category, title, amount FROM expenses"
                 exp_params = []
                 if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
                     exp_query += " WHERE SUBSTR(date, 7, 4) = ?"
@@ -784,30 +788,31 @@ else:
                 exp_rows = cursor.fetchall()
 
             combined_list = []
-            for r in rec_rows:
-                if type_filter in ["அனைத்தும் (All)", "வரவு (Income)"]:
+
+            # வரவு வகைகளின் மொத்தத் தொகை சேர்க்கப்படுகிறது
+            if type_filter in ["அனைத்தும் (All)", "வரவு (Income)"]:
+                for idx, r in enumerate(rec_summary_rows, start=1):
                     combined_list.append({
-                        "ID / எண்": f"REC-{r[0]}",
-                        "தேதி": r[1],
-                        "ஆண்டு": r[2],
+                        "ID / எண்": f"INC-CAT-{idx}",
+                        "தேதி": selected_year if selected_year != "அனைத்து ஆண்டுகளும் (All Years)" else "All",
                         "பதிவு வகை": "வரவு (Income)",
-                        "பிரிவு / Category": r[3],
-                        "விவரம் / பெயர்": r[4],
-                        "வரவுத் தொகை (₹)": float(r[5]),
+                        "பிரிவு / Category": r[0],
+                        "செலவு விவரம்": "மொத்த வரவு தொகை",
+                        "வரவுத் தொகை (₹)": float(r[1]),
                         "செலவுத் தொகை (₹)": 0.0
                     })
 
-            for e in exp_rows:
-                if type_filter in ["அனைத்தும் (All)", "செலவு (Expense)"]:
+            # செலவுகள் தனித்தனி வரிகளாகச் சேர்க்கப்படுகிறது
+            if type_filter in ["அனைத்தும் (All)", "செலவு (Expense)"]:
+                for e in exp_rows:
                     combined_list.append({
                         "ID / எண்": f"EXP-{e[0]}",
                         "தேதி": e[1],
-                        "ஆண்டு": e[2],
                         "பதிவு வகை": "செலவு (Expense)",
-                        "பிரிவு / Category": e[3],
-                        "விவரம் / பெயர்": e[4],
+                        "பிரிவு / Category": e[2],
+                        "செலவு விவரம்": e[3],
                         "வரவுத் தொகை (₹)": 0.0,
-                        "செலவுத் தொகை (₹)": float(e[5])
+                        "செலவுத் தொகை (₹)": float(e[4])
                     })
 
             if combined_list:
@@ -827,9 +832,9 @@ else:
 
                 comb_excel = generate_combined_excel_report(df_comb, tot_inc, tot_exp, net_bal)
                 st.download_button(
-                    label="📊 ஒருங்கிணைந்த Excel அறிக்கையைப் பதிவிறக்கு",
+                    label="📊 இந்த அறிக்கையை Excel ஆக பதிவிறக்கு",
                     data=comb_excel,
-                    file_name=f"Combined_Income_Expense_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    file_name=f"Summary_Income_Expense_{datetime.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary"
                 )
@@ -837,7 +842,7 @@ else:
                 st.info("பதிவுகள் எதுவும் கிடைக்கவில்லை.")
 
         with rep_tab2:
-            st.subheader("👥 வரவு வகைகள் & நிதியாளர்கள் ஆண்டு பத்திகள் (Yearly Matrix Report)")
+            st.subheader("👥 வரவு வகை வாரியான ஆண்டு அறிக்கை (Yearly Matrix Report)")
 
             try:
                 with get_db_connection() as conn:
@@ -1061,7 +1066,7 @@ else:
 
             st.divider()
             st.subheader("🗑️ பதிவை நீக்கு (Delete Record)")
-            
+
             confirm_del = st.checkbox("⚠️ இந்த பதிவை நிரந்தரமாக நீக்க விரும்புகிறேன்.")
             if st.button("🗑️ பதிவை நீக்கு (Delete)", type="secondary"):
                 if confirm_del:
