@@ -448,53 +448,93 @@ def login():
             password = st.text_input("கடவுச்சொல் (Password)", type="password")
             submit = st.form_submit_button("🔓 உள்நுழைக (Login)", type="primary")
 
-            if submit:
-                if not username or not password:
-                    st.warning("⚠️ பயனர் பெயர் மற்றும் கடவுச்சொல்லை உள்ளிடவும்!")
+       # -----------------------------------------------------------------
+        # 2. YEARLY MATRIX REPORTS (2025, 2026 பத்திகளாக வருதல்)
+        # -----------------------------------------------------------------
+        with rep_tab2:
+            st.subheader("👥 வரவு வகைகள் & நிதியாளர்கள் ஆண்டு பத்திகள் (Yearly Matrix Report)")
+
+            try:
+                with get_db_connection() as conn:
+                    # LEFT JOIN பயன்படுத்துவது மூலம் donor_id விடுபட்டிருந்தாலும் பிழை வராது
+                    df_all_rec = pd.read_sql_query("""
+                        SELECT 
+                            r.year, 
+                            r.category, 
+                            COALESCE(r.donor_id, 'DID-1000') as donor_id, 
+                            COALESCE(d.name, r.name) as name, 
+                            COALESCE(d.city, r.city) as city, 
+                            r.amount
+                        FROM receipts r
+                        LEFT JOIN donors d ON r.donor_id = d.donor_id
+                    """, conn)
+            except Exception as e:
+                df_all_rec = pd.DataFrame()
+
+            # DataFrame காலியாக உள்ளதா மற்றும் சரியா உள்ளதா என்பதைச் சரிபார்த்தல்
+            if isinstance(df_all_rec, pd.DataFrame) and not df_all_rec.empty:
+                cat_options = ["அனைத்து வரவு வகைகளும் (All Categories)"] + list(df_all_rec["category"].dropna().unique())
+                selected_cat = st.selectbox("வரவு வகையைத் தேர்ந்தெடுக்கவும்:", cat_options)
+
+                df_filtered = df_all_rec if selected_cat == "அனைத்து வரவு வகைகளும் (All Categories)" else df_all_rec[df_all_rec["category"] == selected_cat]
+
+                if not df_filtered.empty:
+                    # Pivot Table - 2025, 2026 போன்ற ஆண்டுகளை பத்திகளாக்குதல்
+                    pivot_df = df_filtered.pivot_table(
+                        index=["donor_id", "name", "city"],
+                        columns="year",
+                        values="amount",
+                        aggfunc="sum",
+                        fill_value=0.0
+                    ).reset_index()
+
+                    # ஆண்டு பத்திகளின் பெயர்களை வரிசைப்படுத்துதல்
+                    year_cols = [col for col in pivot_df.columns if isinstance(col, (int, float, str)) and str(col).isdigit()]
+                    year_cols_sorted = sorted(year_cols, key=lambda x: int(x))
+
+                    # Total column கணக்கீடு
+                    pivot_df["மொத்தத் தொகை (Total ₹)"] = pivot_df[year_cols_sorted].sum(axis=1)
+
+                    # Columns renaming
+                    rename_dict = {
+                        "donor_id": "நிதியாளர் ID",
+                        "name": "பெயர்",
+                        "city": "ஊர்"
+                    }
+                    for y in year_cols_sorted:
+                        rename_dict[y] = f"{int(y)} தொகை (₹)"
+
+                    pivot_df.rename(columns=rename_dict, inplace=True)
+
+                    # Grand Total Row தயாரித்தல்
+                    grand_total_row = {
+                        "நிதியாளர் ID": "மொத்தம் (Grand Total)",
+                        "பெயர்": "-",
+                        "ஊர்": "-"
+                    }
+
+                    for y in year_cols_sorted:
+                        grand_total_row[f"{int(y)} தொகை (₹)"] = pivot_df[f"{int(y)} தொகை (₹)"].sum()
+
+                    grand_total_row["மொத்தத் தொகை (Total ₹)"] = pivot_df["மொத்தத் தொகை (Total ₹)"].sum()
+
+                    df_final_display = pd.concat([pivot_df, pd.DataFrame([grand_total_row])], ignore_index=True)
+
+                    st.markdown(f"### 📋 {selected_cat} - மேட்ரிக்ஸ் அட்டவணை")
+                    st.dataframe(df_final_display, use_container_width=True)
+
+                    matrix_excel = generate_yearly_matrix_excel(df_final_display, selected_cat)
+                    st.download_button(
+                        label=f"📊 {selected_cat} - Excel அறிக்கையைப் பதிவிறக்கு",
+                        data=matrix_excel,
+                        file_name=f"Yearly_Matrix_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
                 else:
-                    with get_db_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "SELECT * FROM users WHERE username = ? AND password = ?",
-                            (username, password),
-                        )
-                        user = cursor.fetchone()
-
-                    if user:
-                        st.session_state.logged_in = True
-                        st.session_state.username = username
-                        st.query_params["logged_in"] = "true"
-                        st.query_params["user"] = username
-                        st.rerun()
-                    else:
-                        st.error("❌ தவறான பயனர் பெயர் அல்லது கடவுச்சொல்!")
-
-    with signup_tab:
-        st.subheader("புதிய பயனர் கணக்கு உருவாக்க")
-        with st.form("signup_form", clear_on_submit=True):
-            new_username = st.text_input("புதிய பயனர் பெயர் (New Username)")
-            new_password = st.text_input("புதிய கடவுச்சொல் (New Password)", type="password")
-            confirm_password = st.text_input("கடவுச்சொல்லை உறுதிசெய்க (Confirm Password)", type="password")
-            signup_submit = st.form_submit_button("📝 கணக்கு உருவாக்கு (Create Account)", type="primary")
-
-            if signup_submit:
-                if not new_username or not new_password:
-                    st.warning("⚠️ அனைத்து விவரங்களையும் நிரப்பவும்!")
-                elif new_password != confirm_password:
-                    st.error("❌ கடவுச்சொற்கள் பொருந்தவில்லை!")
-                else:
-                    with get_db_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT * FROM users WHERE username = ?", (new_username,))
-                        if cursor.fetchone():
-                            st.error("❌ இந்த பயனர் பெயர் ஏற்கனவே உள்ளது!")
-                        else:
-                            cursor.execute(
-                                "INSERT INTO users (username, password) VALUES (?, ?)",
-                                (new_username, new_password),
-                            )
-                            conn.commit()
-                            st.success("✅ புதிய கணக்கு உருவாக்கப்பட்டது! Login Tab-ல் உள்நுழையலாம்.")
+                    st.info("தேர்ந்தெடுக்கப்பட்ட வகைக்குத் தரவு எதுவும் இல்லை.")
+            else:
+                st.info("வரவுப் பதிவுகள் எதுவும் இதுவரை இல்லை.") Login Tab-ல் உள்நுழையலாம்.")
 
 
 # ---------------------------------------------------------
