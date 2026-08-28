@@ -3,3 +3,4 @@ pandas
 openpyxl
 indic-transliteration
 reportlab
+libsql-experimental
