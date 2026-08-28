@@ -12,6 +12,14 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 import streamlit as st
 import streamlit.components.v1 as components
+import libsql_experimental as libsql
+import streamlit as st
+
+# Streamlit Secrets-ல் இருந்து டேட்டாபேஸ் இணைப்பைப் பெறுதல்
+def get_db_connection():
+    url = st.secrets["libsql://kovil-kanakku-kovilproject.aws-ap-northeast-1.turso.io"]
+    token = st.secrets["eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc4OTY2NTIsImlkIjoiMDFhMDQ2ZjAtODgwMS03YjRkLTk2YjYtYTNmZDMxOTg3MTgyIiwia2lkIjoiT2hSME10YU5BLXp0a3BLNVYxWUV0UGtNSEEyNFQ3c3g3MWplZ3lSUWxpZyIsInJpZCI6IjY3MmE0MTRkLWEyOTQtNGY0MS04NDgxLWJkN2VjNDI0NDNhNSJ9.D5Lwwf5QXIl2xCBhDidOv2IyI_0rISVgCR-rNQktwPW6QovZqcmExe0hwHozb1bsWAxo_gSvNeH4X-s9ASvKDA"]
+    return libsql.connect(database=url, auth_token=token)
 
 # ---------------------------------------------------------
 # STREAMLIT PAGE CONFIG & SESSION INITIALIZATION
