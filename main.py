@@ -19,8 +19,8 @@ import libsql_client
 def get_db_connection():
     # Streamlit Secrets அல்லது நேரடியாக URL & Token
     try:
-        url = st.secrets["TURSO_DATABASE_URL"]
-        token = st.secrets["TURSO_AUTH_TOKEN"]
+        url = st.secrets["https://kovil-kanakku-kovilproject.aws-ap-northeast-1.turso.io"]
+        token = st.secrets["eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc4OTY2NTIsImlkIjoiMDFhMDQ2ZjAtODgwMS03YjRkLTk2YjYtYTNmZDMxOTg3MTgyIiwia2lkIjoiT2hSME10YU5BLXp0a3BLNVYxWUV0UGtNSEEyNFQ3c3g3MWplZ3lSUWxpZyIsInJpZCI6IjY3MmE0MTRkLWEyOTQtNGY0MS04NDgxLWJkN2VjNDI0NDNhNSJ9.D5Lwwf5QXIl2xCBhDidOv2IyI_0rISVgCR-rNQktwPW6QovZqcmExe0hwHozb1bsWAxo_gSvNeH4X-s9ASvKDA"]
     except Exception:
         # Secrets வேலை செய்யவில்லை எனில் நேரடியாக இங்கே கொடுக்கலாம்:
         url = "https://kovil-kanakku-kovilproject.aws-ap-northeast-1.turso.io"
