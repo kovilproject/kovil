@@ -13,20 +13,21 @@ import streamlit as st
 import streamlit.components.v1 as components
 import libsql_client
 
+
 # ---------------------------------------------------------
 # TURSO CLOUD DATABASE CONNECTION
 # ---------------------------------------------------------
 def get_db_connection():
-    # Streamlit Secrets அல்லது நேரடியாக URL & Token
     try:
         url = st.secrets["https://kovil-kanakku-kovilproject.aws-ap-northeast-1.turso.io"]
-        token = st.secrets["eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc4OTY2NTIsImlkIjoiMDFhMDQ2ZjAtODgwMS03YjRkLTk2YjYtYTNmZDMxOTg3MTgyIiwia2lkIjoiT2hSME10YU5BLXp0a3BLNVYxWUV0UGtNSEEyNFQ3c3g3MWplZ3lSUWxpZyIsInJpZCI6IjY3MmE0MTRkLWEyOTQtNGY0MS04NDgxLWJkN2VjNDI0NDNhNSJ9.D5Lwwf5QXIl2xCBhDidOv2IyI_0rISVgCR-rNQktwPW6QovZqcmExe0hwHozb1bsWAxo_gSvNeH4X-s9ASvKDA"]
+        token = st.secrets[
+            "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc4OTY2NTIsImlkIjoiMDFhMDQ2ZjAtODgwMS03YjRkLTk2YjYtYTNmZDMxOTg3MTgyIiwia2lkIjoiT2hSME10YU5BLXp0a3BLNVYxWUV0UGtNSEEyNFQ3c3g3MWplZ3lSUWxpZyIsInJpZCI6IjY3MmE0MTRkLWEyOTQtNGY0MS04NDgxLWJkN2VjNDI0NDNhNSJ9.D5Lwwf5QXIl2xCBhDidOv2IyI_0rISVgCR-rNQktwPW6QovZqcmExe0hwHozb1bsWAxo_gSvNeH4X-s9ASvKDA"]
     except Exception:
-        # Secrets வேலை செய்யவில்லை எனில் நேரடியாக இங்கே கொடுக்கலாம்:
         url = "https://kovil-kanakku-kovilproject.aws-ap-northeast-1.turso.io"
         token = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc4OTY2NTIsImlkIjoiMDFhMDQ2ZjAtODgwMS03YjRkLTk2YjYtYTNmZDMxOTg3MTgyIiwia2lkIjoiT2hSME10YU5BLXp0a3BLNVYxWUV0UGtNSEEyNFQ3c3g3MWplZ3lSUWxpZyIsInJpZCI6IjY3MmE0MTRkLWEyOTQtNGY0MS04NDgxLWJkN2VjNDI0NDNhNSJ9.D5Lwwf5QXIl2xCBhDidOv2IyI_0rISVgCR-rNQktwPW6QovZqcmExe0hwHozb1bsWAxo_gSvNeH4X-s9ASvKDA"
-    
+
     return libsql_client.create_client_sync(url=url, auth_token=token)
+
 
 # ---------------------------------------------------------
 # STREAMLIT PAGE CONFIG & SESSION INITIALIZATION
@@ -77,6 +78,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 # ---------------------------------------------------------
 # BACKGROUND SETUP
 # ---------------------------------------------------------
@@ -96,8 +98,10 @@ def set_local_background(image_path):
     """
     st.markdown(bg_css, unsafe_allow_html=True)
 
+
 if os.path.exists("bg.jpg"):
     set_local_background("bg.jpg")
+
 
 # ---------------------------------------------------------
 # DATABASE INITIALIZATION (TURSO CLOUD)
@@ -133,7 +137,8 @@ def init_db():
             category TEXT,
             title TEXT,
             amount REAL,
-            remarks TEXT
+            remarks TEXT,
+            bill_no TEXT
         )
     """)
     conn.execute("""
@@ -143,6 +148,12 @@ def init_db():
         )
     """)
 
+    # Check if bill_no column exists in expenses table (Migration check)
+    try:
+        conn.execute("ALTER TABLE expenses ADD COLUMN bill_no TEXT")
+    except Exception:
+        pass
+
     res = conn.execute("SELECT * FROM users WHERE username = 'admin'")
     if not res.rows:
         conn.execute(
@@ -150,10 +161,12 @@ def init_db():
             ("admin", "kovil123"),
         )
 
+
 try:
     init_db()
 except Exception as e:
     pass
+
 
 def generate_donor_id():
     conn = get_db_connection()
@@ -163,6 +176,7 @@ def generate_donor_id():
         return f"DID-{num}"
     else:
         return "DID-1001"
+
 
 # ---------------------------------------------------------
 # HELPER FUNCTIONS (PDF & EXCEL GENERATION)
@@ -210,6 +224,7 @@ def render_thermal_receipt_html(data):
     """
     return html_code
 
+
 def get_pdf_font():
     local_font = "NotoSansTamil-Regular.ttf"
     if os.path.exists(local_font):
@@ -232,8 +247,9 @@ def get_pdf_font():
                 continue
     return "Helvetica"
 
+
 def generate_receipt_pdf(
-    title, name, city, amount, receipt_no, date_str, phone, pay_method, donor_id="-"
+        title, name, city, amount, receipt_no, date_str, phone, pay_method, donor_id="-"
 ):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -268,6 +284,7 @@ def generate_receipt_pdf(
     c.save()
     buffer.seek(0)
     return buffer
+
 
 def generate_combined_excel_report(df_combined, total_income, total_expense, net_balance):
     wb = openpyxl.Workbook()
@@ -337,6 +354,7 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
     buffer.seek(0)
     return buffer
 
+
 def generate_yearly_matrix_excel(df_matrix, title_name):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -398,6 +416,7 @@ def generate_yearly_matrix_excel(df_matrix, title_name):
     buffer.seek(0)
     return buffer
 
+
 # ---------------------------------------------------------
 # AUTHENTICATION
 # ---------------------------------------------------------
@@ -454,6 +473,7 @@ def login():
                             (new_username, new_password),
                         )
                         st.success("✅ புதிய கணக்கு உருவாக்கப்பட்டது! Login Tab-ல் உள்நுழையலாம்.")
+
 
 # ---------------------------------------------------------
 # MAIN APPLICATION INTERFACE
@@ -588,7 +608,7 @@ else:
                             payment_method,
                         ),
                     )
-                    
+
                     last_res = conn.execute("SELECT receipt_no FROM receipts ORDER BY receipt_no DESC LIMIT 1")
                     rec_id = last_res.rows[0][0] if last_res.rows else 1
 
@@ -662,6 +682,7 @@ else:
                         "இதர செலவுகள்",
                     ],
                 )
+                exp_bill_no = st.text_input("பில் / ரசீது எண் (Bill / Voucher No)")
                 exp_title = st.text_input("விவரம் (Title)")
             with col2:
                 exp_amount = st.number_input(
@@ -682,13 +703,14 @@ else:
                     conn = get_db_connection()
                     conn.execute(
                         "INSERT INTO expenses (date, category, title,"
-                        " amount, remarks) VALUES (?, ?, ?, ?, ?)",
+                        " amount, remarks, bill_no) VALUES (?, ?, ?, ?, ?, ?)",
                         (
                             formatted_exp_date,
                             exp_category,
                             exp_title,
                             exp_amount,
                             exp_remarks,
+                            exp_bill_no,
                         ),
                     )
                     st.success("✅ செலவு பதிவு வெற்றிகரமாக சேமிக்கப்பட்டது!")
@@ -705,13 +727,14 @@ else:
         )
 
         with rep_tab1:
-            st.subheader("📑 வரவு (வகை வாரியாக) மற்றும் செலவு இணைந்த அறிக்கை")
+            st.subheader("📑 வரவு மற்றும் செலவு இணைந்த விரிவான அறிக்கை")
 
             conn = get_db_connection()
             res_r = conn.execute("SELECT DISTINCT year FROM receipts WHERE year IS NOT NULL ORDER BY year DESC")
             years_r = [str(r[0]) for r in res_r.rows if r[0]]
-            
-            res_e = conn.execute("SELECT DISTINCT SUBSTR(date, 7, 4) FROM expenses WHERE date IS NOT NULL ORDER BY SUBSTR(date, 7, 4) DESC")
+
+            res_e = conn.execute(
+                "SELECT DISTINCT SUBSTR(date, 7, 4) FROM expenses WHERE date IS NOT NULL ORDER BY SUBSTR(date, 7, 4) DESC")
             years_e = [str(r[0]) for r in res_e.rows if r[0]]
 
             all_years_set = sorted(list(set(years_r + years_e)), reverse=True)
@@ -721,21 +744,21 @@ else:
             with col_y1:
                 selected_year = st.selectbox("📅 ஆண்டு வடிகட்டி (Year Filter):", avail_years, key="comb_year")
             with col_y2:
-                type_filter = st.selectbox("வகை வடிகட்டி (Type Filter):", ["அனைத்தும் (All)", "வரவு (Income)", "செலவு (Expense)"])
+                type_filter = st.selectbox("வகை வடிகட்டி (Type Filter):",
+                                           ["அனைத்தும் (All)", "வரவு (Income)", "செலவு (Expense)"])
 
-            # 1. வரவுகள்
-            rec_query = "SELECT category, SUM(amount) FROM receipts"
+            # 1. வரவுகள் (Receipts query - fetching individual records including phone number)
+            rec_query = "SELECT receipt_no, date, category, name, city, phone, amount FROM receipts"
             rec_params = []
             if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
                 rec_query += " WHERE year = ?"
                 rec_params.append(int(selected_year))
-            rec_query += " GROUP BY category"
 
             res_rec = conn.execute(rec_query, rec_params)
-            rec_summary_rows = res_rec.rows
+            rec_rows = res_rec.rows
 
             # 2. செலவுகள்
-            exp_query = "SELECT expense_id, date, category, title, amount FROM expenses"
+            exp_query = "SELECT expense_id, date, category, title, amount, bill_no FROM expenses"
             exp_params = []
             if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
                 exp_query += " WHERE SUBSTR(date, 7, 4) = ?"
@@ -747,25 +770,29 @@ else:
             combined_list = []
 
             if type_filter in ["அனைத்தும் (All)", "வரவு (Income)"]:
-                for idx, r in enumerate(rec_summary_rows, start=1):
+                for r in rec_rows:
                     combined_list.append({
-                        "ID / எண்": f"INC-CAT-{idx}",
-                        "தேதி": selected_year if selected_year != "அனைத்து ஆண்டுகளும் (All Years)" else "All",
+                        "ID / பில் எண்": f"REC-{r[0]}",
+                        "தேதி": r[1],
                         "பதிவு வகை": "வரவு (Income)",
-                        "பிரிவு / Category": r[0],
-                        "செலவு விவரம்": "மொத்த வரவு தொகை",
-                        "வரவுத் தொகை (₹)": float(r[1]),
+                        "வரவு/செலவு பிரிவு": r[2],
+                        "பெயர் / விவரம்": r[3],
+                        "ஊர்": r[4] if r[4] else "-",
+                        "கைபேசி எண்": r[5] if r[5] else "-",
+                        "வரவுத் தொகை (₹)": float(r[6]),
                         "செலவுத் தொகை (₹)": 0.0
                     })
 
             if type_filter in ["அனைத்தும் (All)", "செலவு (Expense)"]:
                 for e in exp_rows:
                     combined_list.append({
-                        "ID / எண்": f"EXP-{e[0]}",
+                        "ID / பில் எண்": f"Bill No: {e[5]}" if e[5] else f"EXP-{e[0]}",
                         "தேதி": e[1],
                         "பதிவு வகை": "செலவு (Expense)",
-                        "பிரிவு / Category": e[2],
-                        "செலவு விவரம்": e[3],
+                        "வரவு/செலவு பிரிவு": e[2],
+                        "பெயர் / விவரம்": e[3],
+                        "ஊர்": "-",
+                        "கைபேசி எண்": "-",
                         "வரவுத் தொகை (₹)": 0.0,
                         "செலவுத் தொகை (₹)": float(e[4])
                     })
@@ -817,10 +844,12 @@ else:
                 df_all_rec = pd.DataFrame()
 
             if isinstance(df_all_rec, pd.DataFrame) and not df_all_rec.empty:
-                cat_options = ["அனைத்து வரவு வகைகளும் (All Categories)"] + list(df_all_rec["category"].dropna().unique())
+                cat_options = ["அனைத்து வரவு வகைகளும் (All Categories)"] + list(
+                    df_all_rec["category"].dropna().unique())
                 selected_cat = st.selectbox("வரவு வகையைத் தேர்ந்தெடுக்கவும்:", cat_options)
 
-                df_filtered = df_all_rec if selected_cat == "அனைத்து வரவு வகைகளும் (All Categories)" else df_all_rec[df_all_rec["category"] == selected_cat]
+                df_filtered = df_all_rec if selected_cat == "அனைத்து வரவு வகைகளும் (All Categories)" else df_all_rec[
+                    df_all_rec["category"] == selected_cat]
 
                 if not df_filtered.empty:
                     pivot_df = df_filtered.pivot_table(
@@ -831,7 +860,8 @@ else:
                         fill_value=0.0
                     ).reset_index()
 
-                    year_cols = [col for col in pivot_df.columns if isinstance(col, (int, float, str)) and str(col).isdigit()]
+                    year_cols = [col for col in pivot_df.columns if
+                                 isinstance(col, (int, float, str)) and str(col).isdigit()]
                     year_cols_sorted = sorted(year_cols, key=lambda x: int(x))
 
                     pivot_df["மொத்தத் தொகை (Total ₹)"] = pivot_df[year_cols_sorted].sum(axis=1)
@@ -902,7 +932,7 @@ else:
             else:
                 res = conn.execute(
                     "SELECT expense_id, date, category, title, amount,"
-                    " remarks FROM expenses WHERE expense_id = ?",
+                    " remarks, bill_no FROM expenses WHERE expense_id = ?",
                     (edit_id,),
                 )
             st.session_state["edit_data"] = res.rows[0] if res.rows else None
@@ -970,6 +1000,8 @@ else:
                         cat_list,
                         index=cat_list.index(data[2]) if data[2] in cat_list else 0,
                     )
+                    e_bill_no = st.text_input("பில் / ரசீது எண் (Bill / Voucher No):",
+                                              value=data[6] if len(data) > 6 and data[6] else "")
                     e_title = st.text_input("விவரம்:", value=data[3])
                     e_amt = st.number_input(
                         "தொகை (₹):", value=float(data[4]), step=50.0
@@ -1002,7 +1034,7 @@ else:
                     else:
                         conn.execute(
                             "UPDATE expenses SET date=?, category=?,"
-                            " title=?, amount=?, remarks=? WHERE"
+                            " title=?, amount=?, remarks=?, bill_no=? WHERE"
                             " expense_id=?",
                             (
                                 formatted_u_date,
@@ -1010,6 +1042,7 @@ else:
                                 e_title,
                                 e_amt,
                                 e_remarks,
+                                e_bill_no,
                                 data[0],
                             ),
                         )
