@@ -825,7 +825,7 @@ else:
                 st.info("பதிவுகள் எதுவும் கிடைக்கவில்லை.")
 
        with rep_tab2:
-    st.subheader("👥 வரவு வகை வாரியான ஆண்டு அறிக்கை (Yearly Matrix Report)")
+            st.subheader("👥 வரவு வகை வாரியான ஆண்டு அறிக்கை (Yearly Matrix Report)")
 
     try:
         conn = get_db_connection()
