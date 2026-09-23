@@ -148,7 +148,6 @@ def init_db():
         )
     """)
 
-    # Check if bill_no column exists in expenses table (Migration check)
     try:
         conn.execute("ALTER TABLE expenses ADD COLUMN bill_no TEXT")
     except Exception:
@@ -747,8 +746,8 @@ else:
                 type_filter = st.selectbox("வகை வடிகட்டி (Type Filter):",
                                            ["அனைத்தும் (All)", "வரவு (Income)", "செலவு (Expense)"])
 
-            # 1. வரவுகள் (Receipts query - fetching individual records including phone number)
-            rec_query = "SELECT receipt_no, date, category, name, city, phone, amount FROM receipts"
+            # 1. வரவுகள் (Payment Method சேர்க்கப்பட்டுள்ளது)
+            rec_query = "SELECT receipt_no, date, category, name, city, phone, payment_method, amount FROM receipts"
             rec_params = []
             if selected_year != "அனைத்து ஆண்டுகளும் (All Years)":
                 rec_query += " WHERE year = ?"
@@ -779,7 +778,8 @@ else:
                         "பெயர் / விவரம்": r[3],
                         "ஊர்": r[4] if r[4] else "-",
                         "கைபேசி எண்": r[5] if r[5] else "-",
-                        "வரவுத் தொகை (₹)": float(r[6]),
+                        "செலுத்திய முறை": r[6] if r[6] else "Cash",
+                        "வரவுத் தொகை (₹)": float(r[7]),
                         "செலவுத் தொகை (₹)": 0.0
                     })
 
@@ -793,6 +793,7 @@ else:
                         "பெயர் / விவரம்": e[3],
                         "ஊர்": "-",
                         "கைபேசி எண்": "-",
+                        "செலுத்திய முறை": "-",
                         "வரவுத் தொகை (₹)": 0.0,
                         "செலவுத் தொகை (₹)": float(e[4])
                     })
@@ -832,14 +833,14 @@ else:
                     SELECT 
                         r.year, 
                         r.category, 
-                        COALESCE(r.donor_id, 'DID-1000') as donor_id, 
                         COALESCE(d.name, r.name) as name, 
                         COALESCE(d.city, r.city) as city, 
+                        COALESCE(d.phone, r.phone) as phone,
                         r.amount
                     FROM receipts r
                     LEFT JOIN donors d ON r.donor_id = d.donor_id
                 """)
-                df_all_rec = pd.DataFrame(res.rows, columns=["year", "category", "donor_id", "name", "city", "amount"])
+                df_all_rec = pd.DataFrame(res.rows, columns=["year", "category", "name", "city", "phone", "amount"])
             except Exception as e:
                 df_all_rec = pd.DataFrame()
 
@@ -852,8 +853,9 @@ else:
                     df_all_rec["category"] == selected_cat]
 
                 if not df_filtered.empty:
+                    # Index-ல் phone சேர்க்கப்பட்டு donor_id நீக்கப்பட்டுள்ளது
                     pivot_df = df_filtered.pivot_table(
-                        index=["donor_id", "name", "city"],
+                        index=["name", "city", "phone"],
                         columns="year",
                         values="amount",
                         aggfunc="sum",
@@ -867,9 +869,9 @@ else:
                     pivot_df["மொத்தத் தொகை (Total ₹)"] = pivot_df[year_cols_sorted].sum(axis=1)
 
                     rename_dict = {
-                        "donor_id": "நிதியாளர் ID",
                         "name": "பெயர்",
-                        "city": "ஊர்"
+                        "city": "ஊர்",
+                        "phone": "கைபேசி எண்"
                     }
                     for y in year_cols_sorted:
                         rename_dict[y] = f"{int(y)} தொகை (₹)"
@@ -877,9 +879,9 @@ else:
                     pivot_df.rename(columns=rename_dict, inplace=True)
 
                     grand_total_row = {
-                        "நிதியாளர் ID": "மொத்தம் (Grand Total)",
-                        "பெயர்": "-",
-                        "ஊர்": "-"
+                        "பெயர்": "மொத்தம் (Grand Total)",
+                        "ஊர்": "-",
+                        "கைபேசி எண்": "-"
                     }
 
                     for y in year_cols_sorted:
