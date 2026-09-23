@@ -836,6 +836,7 @@ else:
                         COALESCE(d.name, r.name) as name, 
                         COALESCE(d.city, r.city) as city, 
                         COALESCE(d.phone, r.phone) as phone,
+                        COALESCE(r.payment_method, 'Cash') as payment_method,
                         r.amount
                     FROM receipts r
                     LEFT JOIN donors d ON r.donor_id = d.donor_id
@@ -855,7 +856,7 @@ else:
                 if not df_filtered.empty:
                     # Index-ல் phone சேர்க்கப்பட்டு donor_id நீக்கப்பட்டுள்ளது
                     pivot_df = df_filtered.pivot_table(
-                        index=["name", "city", "phone"],
+                        index=["name", "city", "phone", "payment_method"],
                         columns="year",
                         values="amount",
                         aggfunc="sum",
@@ -872,6 +873,7 @@ else:
                         "name": "பெயர்",
                         "city": "ஊர்",
                         "phone": "கைபேசி எண்"
+                        "payment_method": "செலுத்திய முறை"
                     }
                     for y in year_cols_sorted:
                         rename_dict[y] = f"{int(y)} தொகை (₹)"
@@ -882,6 +884,7 @@ else:
                         "பெயர்": "மொத்தம் (Grand Total)",
                         "ஊர்": "-",
                         "கைபேசி எண்": "-"
+                        "செலுத்திய முறை": "-"
                     }
 
                     for y in year_cols_sorted:
