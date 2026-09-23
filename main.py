@@ -824,92 +824,90 @@ else:
             else:
                 st.info("பதிவுகள் எதுவும் கிடைக்கவில்லை.")
 
-       with rep_tab2:
+        with rep_tab2:
             st.subheader("👥 வரவு வகை வாரியான ஆண்டு அறிக்கை (Yearly Matrix Report)")
 
-    try:
-        conn = get_db_connection()
-        # Query-இல் r.payment_method சேர்க்கப்பட்டுள்ளது
-        res = conn.execute("""
-            SELECT 
-                r.year, 
-                r.category, 
-                COALESCE(d.name, r.name) as name, 
-                COALESCE(d.city, r.city) as city, 
-                COALESCE(d.phone, r.phone) as phone,
-                COALESCE(r.payment_method, 'Cash') as payment_method,
-                r.amount
-            FROM receipts r
-            LEFT JOIN donors d ON r.donor_id = d.donor_id
-        """)
-        df_all_rec = pd.DataFrame(res.rows, columns=["year", "category", "name", "city", "phone", "payment_method", "amount"])
-    except Exception as e:
-        df_all_rec = pd.DataFrame()
+            try:
+                conn = get_db_connection()
+                res = conn.execute("""
+                    SELECT 
+                        r.year, 
+                        r.category, 
+                        COALESCE(d.name, r.name) as name, 
+                        COALESCE(d.city, r.city) as city, 
+                        COALESCE(d.phone, r.phone) as phone,
+                        COALESCE(r.payment_method, 'Cash') as payment_method,
+                        r.amount
+                    FROM receipts r
+                    LEFT JOIN donors d ON r.donor_id = d.donor_id
+                """)
+                df_all_rec = pd.DataFrame(res.rows, columns=["year", "category", "name", "city", "phone", "payment_method", "amount"])
+            except Exception as e:
+                df_all_rec = pd.DataFrame()
 
-    if isinstance(df_all_rec, pd.DataFrame) and not df_all_rec.empty:
-        cat_options = ["அனைத்து வரவு வகைகளும் (All Categories)"] + list(
-            df_all_rec["category"].dropna().unique())
-        selected_cat = st.selectbox("வரவு வகையைத் தேர்ந்தெடுக்கவும்:", cat_options)
+            if isinstance(df_all_rec, pd.DataFrame) and not df_all_rec.empty:
+                cat_options = ["அனைத்து வரவு வகைகளும் (All Categories)"] + list(
+                    df_all_rec["category"].dropna().unique())
+                selected_cat = st.selectbox("வரவு வகையைத் தேர்ந்தெடுக்கவும்:", cat_options)
 
-        df_filtered = df_all_rec if selected_cat == "அனைத்து வரவு வகைகளும் (All Categories)" else df_all_rec[
-            df_all_rec["category"] == selected_cat]
+                df_filtered = df_all_rec if selected_cat == "அனைத்து வரவு வகைகளும் (All Categories)" else df_all_rec[
+                    df_all_rec["category"] == selected_cat]
 
-        if not df_filtered.empty:
-            # Index-ல் 'payment_method' சேர்க்கப்பட்டுள்ளது
-            pivot_df = df_filtered.pivot_table(
-                index=["name", "city", "phone", "payment_method"],
-                columns="year",
-                values="amount",
-                aggfunc="sum",
-                fill_value=0.0
-            ).reset_index()
+                if not df_filtered.empty:
+                    pivot_df = df_filtered.pivot_table(
+                        index=["name", "city", "phone", "payment_method"],
+                        columns="year",
+                        values="amount",
+                        aggfunc="sum",
+                        fill_value=0.0
+                    ).reset_index()
 
-            year_cols = [col for col in pivot_df.columns if
-                         isinstance(col, (int, float, str)) and str(col).isdigit()]
-            year_cols_sorted = sorted(year_cols, key=lambda x: int(x))
+                    year_cols = [col for col in pivot_df.columns if
+                                 isinstance(col, (int, float, str)) and str(col).isdigit()]
+                    year_cols_sorted = sorted(year_cols, key=lambda x: int(x))
 
-            pivot_df["மொத்தத் தொகை (Total ₹)"] = pivot_df[year_cols_sorted].sum(axis=1)
+                    pivot_df["மொத்தத் தொகை (Total ₹)"] = pivot_df[year_cols_sorted].sum(axis=1)
 
-            rename_dict = {
-                "name": "பெயர்",
-                "city": "ஊர்",
-                "phone": "கைபேசி எண்",
-                "payment_method": "செலுத்திய முறை"
-            }
-            for y in year_cols_sorted:
-                rename_dict[y] = f"{int(y)} தொகை (₹)"
+                    rename_dict = {
+                        "name": "பெயர்",
+                        "city": "ஊர்",
+                        "phone": "கைபேசி எண்",
+                        "payment_method": "செலுத்திய முறை"
+                    }
+                    for y in year_cols_sorted:
+                        rename_dict[y] = f"{int(y)} தொகை (₹)"
 
-            pivot_df.rename(columns=rename_dict, inplace=True)
+                    pivot_df.rename(columns=rename_dict, inplace=True)
 
-            grand_total_row = {
-                "பெயர்": "மொத்தம் (Grand Total)",
-                "ஊர்": "-",
-                "கைபேசி எண்": "-",
-                "செலுத்திய முறை": "-"
-            }
+                    grand_total_row = {
+                        "பெயர்": "மொத்தம் (Grand Total)",
+                        "ஊர்": "-",
+                        "கைபேசி எண்": "-",
+                        "செலுத்திய முறை": "-"
+                    }
 
-            for y in year_cols_sorted:
-                grand_total_row[f"{int(y)} தொகை (₹)"] = pivot_df[f"{int(y)} தொகை (₹)"].sum()
+                    for y in year_cols_sorted:
+                        grand_total_row[f"{int(y)} தொகை (₹)"] = pivot_df[f"{int(y)} தொகை (₹)"].sum()
 
-            grand_total_row["மொத்தத் தொகை (Total ₹)"] = pivot_df["மொத்தத் தொகை (Total ₹)"].sum()
+                    grand_total_row["மொத்தத் தொகை (Total ₹)"] = pivot_df["மொத்தத் தொகை (Total ₹)"].sum()
 
-            df_final_display = pd.concat([pivot_df, pd.DataFrame([grand_total_row])], ignore_index=True)
+                    df_final_display = pd.concat([pivot_df, pd.DataFrame([grand_total_row])], ignore_index=True)
 
-            st.markdown(f"### 📋 {selected_cat} - மேட்ரிக்ஸ் அட்டவணை")
-            st.dataframe(df_final_display, use_container_width=True)
+                    st.markdown(f"### 📋 {selected_cat} - மேட்ரிக்ஸ் அட்டவணை")
+                    st.dataframe(df_final_display, use_container_width=True)
 
-            matrix_excel = generate_yearly_matrix_excel(df_final_display, selected_cat)
-            st.download_button(
-                label=f"📊 {selected_cat} - Excel அறிக்கையைப் பதிவிறக்கு",
-                data=matrix_excel,
-                file_name=f"Yearly_Matrix_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
-        else:
-            st.info("தேர்ந்தெடுக்கப்பட்ட வகைக்குத் தரவு எதுவும் இல்லை.")
-    else:
-        st.info("வரவுப் பதிவுகள் எதுவும் இதுவரை இல்லை.")
+                    matrix_excel = generate_yearly_matrix_excel(df_final_display, selected_cat)
+                    st.download_button(
+                        label=f"📊 {selected_cat} - Excel அறிக்கையைப் பதிவிறக்கு",
+                        data=matrix_excel,
+                        file_name=f"Yearly_Matrix_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
+                else:
+                    st.info("தேர்ந்தெடுக்கப்பட்ட வகைக்குத் தரவு எதுவும் இல்லை.")
+            else:
+                st.info("வரவுப் பதிவுகள் எதுவும் இதுவரை இல்லை.")
 
     # TAB 4: EDIT & DELETE ENTRY
     with tab4:
