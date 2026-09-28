@@ -300,7 +300,7 @@ def generate_combined_excel_report(df_combined, total_income, total_expense, net
     )
 
     ws.merge_cells(f"A1:{openpyxl.utils.get_column_letter(len(df_combined.columns))}1")
-    ws["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை - ஒருங்கிணைந்த வரவு செலவு அறிக்கை"
+    ws["A1"] = "அருள்மிகு பெத்தையா காடேரி அம்பிகை மஞ்சள் நீராட்டு வெள்ளாள சமூக குலதெய்வ மண்டகப்படி"
     ws["A1"].font = title_font
     ws["A1"].alignment = Alignment(horizontal="center")
 
