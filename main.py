@@ -767,10 +767,12 @@ else:
             exp_rows = res_exp.rows
 
             combined_list = []
+            s_no = 1
 
             if type_filter in ["அனைத்தும் (All)", "வரவு (Income)"]:
                 for r in rec_rows:
                     combined_list.append({
+                        "வ.எண் (S.No)": s_no,
                         "ID / பில் எண்": f"REC-{r[0]}",
                         "தேதி": r[1],
                         "பதிவு வகை": "வரவு (Income)",
@@ -782,10 +784,12 @@ else:
                         "வரவுத் தொகை (₹)": float(r[7]),
                         "செலவுத் தொகை (₹)": 0.0
                     })
+                    s_no += 1
 
             if type_filter in ["அனைத்தும் (All)", "செலவு (Expense)"]:
                 for e in exp_rows:
                     combined_list.append({
+                        "வ.எண் (S.No)": s_no,
                         "ID / பில் எண்": f"Bill No: {e[5]}" if e[5] else f"EXP-{e[0]}",
                         "தேதி": e[1],
                         "பதிவு வகை": "செலவு (Expense)",
@@ -797,6 +801,7 @@ else:
                         "வரவுத் தொகை (₹)": 0.0,
                         "செலவுத் தொகை (₹)": float(e[4])
                     })
+                    s_no += 1
 
             if combined_list:
                 df_comb = pd.DataFrame(combined_list)
