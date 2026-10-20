@@ -879,10 +879,17 @@ else:
                         "phone": "கைபேசி எண்",
                         "payment_method": "செலுத்திய முறை"
                     }
+                   # for y in year_cols_sorted:
+                    #    rename_dict[y] = f"{int(y)} தொகை (₹)"
+
+                   # pivot_df.rename(columns=rename_dict, inplace=True)
                     for y in year_cols_sorted:
                         rename_dict[y] = f"{int(y)} தொகை (₹)"
 
                     pivot_df.rename(columns=rename_dict, inplace=True)
+
+                    # --- SERIAL NUMBER (வ.எண்) ADDING LOGIC ---
+                    pivot_df.insert(0, "வ.எண் (S.No)", range(1, len(pivot_df) + 1))
 
                     grand_total_row = {
                         "பெயர்": "மொத்தம் (Grand Total)",
