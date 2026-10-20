@@ -398,8 +398,8 @@ def generate_yearly_matrix_excel(df_matrix, title_name):
                 cell.font = bold_font
                 cell.fill = total_fill
                 
-             if c_idx > 5 or (is_last_row and c_idx >= 6):
-           # if c_idx > 3 or (is_last_row and c_idx >= 4):
+            # if c_idx > 5 or (is_last_row and c_idx >= 6):
+              if c_idx > 3 or (is_last_row and c_idx >= 4):
                 try:
                     val = float(cell.value)
                     cell.value = val
